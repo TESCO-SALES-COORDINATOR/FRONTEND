@@ -14,6 +14,9 @@ const STATUS_STYLES = {
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
+// The 4 sales managers a visit can be assigned to
+const SALES_TEAM = ['Azar Abdullah A', 'Praveenraja P', 'Suresh P', 'Agsal A'];
+
 function formatDisplayDate(dateStr) {
   const d = new Date(dateStr);
   const day = d.getDate();
@@ -48,10 +51,17 @@ function convertTo24Hour(time12) {
   return `${hoursStr}:${minutes}`;
 }
 
+// Always render a time in 12-hour AM/PM (handles values already in 12h or stored as 24h)
+function display12h(t) {
+  if (!t) return '';
+  return /[ap]m/i.test(t) ? t : convertTo12Hour(t);
+}
+
 const Appointments = () => {
   const addToast = useToast();
   const [appointments, setAppointments] = useState([]);
   const [apptLoaded, setApptLoaded] = useState(false);
+  const [leads, setLeads] = useState([]);
 
   // Normalize API record so existing JSX (apt.id) keeps working
   const normalize = (a) => ({ ...a, id: a._id || a.id });
@@ -72,12 +82,32 @@ const Appointments = () => {
     load();
   }, []);
 
+  // Load leads so an appointment can be linked to a lead (and logged on its history)
+  useEffect(() => {
+    fetch('http://localhost:5000/api/leads')
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setLeads(d); })
+      .catch((e) => console.error('Failed to load leads:', e));
+  }, []);
+
+  // Append an entry to a lead's shared history (visible to manager + coordinator)
+  const appendLeadHistory = (leadId, message) => {
+    if (!leadId) return;
+    const lead = leads.find((l) => l.id === leadId);
+    const stamp = new Date().toLocaleDateString('en-GB') + ', ' + new Date().toLocaleTimeString('en-US', { hour12: false });
+    const entry = { timestamp: stamp, message, remark: '' };
+    const history = Array.isArray(lead?.history) ? [...lead.history, entry] : [entry];
+    fetch(`http://localhost:5000/api/leads/${leadId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ history })
+    }).catch((e) => console.error('Failed to update lead history:', e));
+  };
+
   const [activeTab, setActiveTab] = useState('Appointment');
   const [searchQuery, setSearchQuery] = useState('');
   const [calendarDate, setCalendarDate] = useState(() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1); });
   const [selectedDay, setSelectedDay] = useState(null); // 'YYYY-MM-DD' when a calendar day is clicked
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newVisit, setNewVisit] = useState({ title: '', date: '', timeStart: '', timeEnd: '', manager: '', phone: '', location: '', status: 'Waiting', type: 'Appointment' });
+  const [newVisit, setNewVisit] = useState({ title: '', leadId: '', date: '', timeStart: '', timeEnd: '', manager: '', phone: '', location: '', status: 'Waiting', type: 'Appointment' });
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
   const [rescheduleAptId, setRescheduleAptId] = useState(null);
   const [rescheduleDetails, setRescheduleDetails] = useState({ date: '', timeStart: '', timeEnd: '' });
@@ -91,8 +121,10 @@ const Appointments = () => {
   const visitComplete     = appointments.filter(a => a.type === 'Visits' && a.status === 'Completed').length;
 
   /* ── Filter ── */
+  // Robust segregation: anything whose type contains "visit" is a Visit, everything else an Appointment
+  const isVisitType = (a) => /visit/i.test(a.type || '');
   const filtered = appointments.filter(a => {
-    const matchesTab = a.type === activeTab;
+    const matchesTab = activeTab === 'Visits' ? isVisitType(a) : !isVisitType(a);
     const matchesManager = selectedManager === 'All' || a.manager === selectedManager;
     const matchesDay = !selectedDay || a.date === selectedDay;
     return matchesTab && matchesManager && matchesDay;
@@ -133,19 +165,32 @@ const Appointments = () => {
     setIsRescheduleModalOpen(true);
   };
 
+  const coordinatorName = (JSON.parse(localStorage.getItem('crm_user') || 'null')?.name) || 'Coordinator';
+
+  const handleDeleteAppt = (apt) => {
+    if (!window.confirm(`Delete "${apt.title || 'this appointment'}"?`)) return;
+    setAppointments(prev => prev.filter(a => a.id !== apt.id));
+    fetch(`${APPT_API}/${apt.id}`, { method: 'DELETE' }).catch(err => console.error('Failed to delete appointment:', err));
+  };
+
   const handleRescheduleSubmit = (e) => {
     e.preventDefault();
     const updated = {
       date: rescheduleDetails.date,
       timeStart: convertTo12Hour(rescheduleDetails.timeStart),
-      timeEnd: convertTo12Hour(rescheduleDetails.timeEnd)
+      timeEnd: convertTo12Hour(rescheduleDetails.timeEnd),
+      // mark the reschedule so the assigned manager gets notified
+      rescheduledAt: new Date().toISOString(),
+      rescheduledBy: coordinatorName
     };
+    const apt = appointments.find(a => a.id === rescheduleAptId);
     setAppointments(prev => prev.map(a => a.id === rescheduleAptId ? { ...a, ...updated } : a));
     fetch(`${APPT_API}/${rescheduleAptId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated)
     }).catch(err => console.error('Failed to reschedule appointment:', err));
+    if (apt?.leadId) appendLeadHistory(apt.leadId, `Appointment "${apt.title}" rescheduled to ${updated.date} ${updated.timeStart} by ${coordinatorName}`);
     setIsRescheduleModalOpen(false);
     setRescheduleAptId(null);
     addToast('Appointment rescheduled successfully!', 'success');
@@ -153,19 +198,27 @@ const Appointments = () => {
 
   const handleAddSubmit = (e) => {
     e.preventDefault();
+    // Store times in 12-hour AM/PM format
+    const payload = {
+      ...newVisit,
+      timeStart: convertTo12Hour(newVisit.timeStart),
+      timeEnd: convertTo12Hour(newVisit.timeEnd)
+    };
     fetch(APPT_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newVisit)
+      body: JSON.stringify(payload)
     })
       .then(r => r.json())
       .then(saved => setAppointments(prev => [...prev, normalize(saved)]))
       .catch(err => {
         console.error('Failed to add appointment:', err);
-        setAppointments(prev => [...prev, { ...newVisit, id: Date.now() }]);
+        setAppointments(prev => [...prev, { ...payload, id: Date.now() }]);
       });
+    // Log the scheduled appointment/visit on the lead's shared history
+    appendLeadHistory(payload.leadId, `${payload.type === 'Visits' ? 'Visit' : 'Appointment'} "${payload.title}" scheduled for ${payload.date} (${payload.timeStart} - ${payload.timeEnd}), assigned to ${payload.manager} by ${coordinatorName}`);
     setIsModalOpen(false);
-    setNewVisit({ title: '', date: '', timeStart: '', timeEnd: '', manager: '', phone: '', location: '', status: 'Waiting', type: 'Appointment' });
+    setNewVisit({ title: '', leadId: '', date: '', timeStart: '', timeEnd: '', manager: '', phone: '', location: '', status: 'Waiting', type: 'Appointment' });
     addToast('Appointment scheduled!', 'success');
   };
 
@@ -243,7 +296,7 @@ const Appointments = () => {
                 }}
               >
                 <option value="All">All Managers</option>
-                {uniqueManagers.map(mgr => (
+                {SALES_TEAM.map(mgr => (
                   <option key={mgr} value={mgr}>{mgr}</option>
                 ))}
               </select>
@@ -264,7 +317,7 @@ const Appointments = () => {
                 {/* Date block */}
                 <div style={{ minWidth: '110px' }}>
                   <div style={{ fontWeight: '700', fontSize: '0.8rem', color: 'var(--text-main)', marginBottom: '0.2rem' }}>{formatDisplayDate(apt.date)}</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: '500' }}>{apt.timeStart} - {apt.timeEnd}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: '500' }}>{display12h(apt.timeStart)} - {display12h(apt.timeEnd)}</div>
                 </div>
 
                 {/* Divider */}
@@ -298,6 +351,12 @@ const Appointments = () => {
                     style={{ padding: '0.35rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', background: 'transparent', fontSize: '0.8rem', fontWeight: '500', color: 'var(--text-main)', cursor: 'pointer', width: '100%' }}
                   >
                     Reschedule
+                  </button>
+                  <button
+                    onClick={() => handleDeleteAppt(apt)}
+                    style={{ padding: '0.35rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid #FCA5A5', background: '#FEF2F2', fontSize: '0.8rem', fontWeight: '500', color: '#B91C1C', cursor: 'pointer', width: '100%' }}
+                  >
+                    Delete
                   </button>
                 </div>
               </div>
@@ -358,9 +417,10 @@ const Appointments = () => {
               <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-main)' }}>Quick Summary</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {[
-                  { label: 'Tomorrow', detail: `${appointments.filter(a => a.type === 'Visits').length} Site Visits` },
-                  { label: 'This Week', detail: `${appointments.filter(a => a.status === 'Assigned').length} Office Meeting${appointments.filter(a => a.status === 'Assigned').length !== 1 ? 's' : ''}` },
-                  { label: 'Pending', detail: `${appointments.filter(a => a.status === 'Waiting').length} Awaiting Confirmation` },
+                  { label: 'Site Visits', detail: `${appointments.filter(a => a.type === 'Visits').length} scheduled` },
+                  { label: 'Appointments', detail: `${appointments.filter(a => a.type !== 'Visits').length} scheduled` },
+                  { label: 'Pending', detail: `${appointments.filter(a => a.status === 'Waiting').length} awaiting confirmation` },
+                  { label: 'Completed', detail: `${appointments.filter(a => a.status === 'Completed').length} done` },
                 ].map(({ label, detail }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                     <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary-color)', marginTop: '5px', flexShrink: 0 }} />
@@ -402,11 +462,12 @@ const Appointments = () => {
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>
                   New Date
                 </label>
-                <input 
-                  type="date" 
-                  value={rescheduleDetails.date} 
-                  onChange={e => setRescheduleDetails({ ...rescheduleDetails, date: e.target.value })} 
-                  required 
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={rescheduleDetails.date}
+                  onChange={e => setRescheduleDetails({ ...rescheduleDetails, date: e.target.value })}
+                  required
                   style={{ width: '100%', padding: '0.65rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem', color: 'var(--text-main)' }} 
                 />
               </div>
@@ -444,10 +505,11 @@ const Appointments = () => {
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn btn-primary"
-                  style={{ padding: '0.55rem 1.25rem' }}
+                  disabled={!rescheduleDetails.date || !rescheduleDetails.timeStart || !rescheduleDetails.timeEnd}
+                  style={{ padding: '0.55rem 1.25rem', opacity: (!rescheduleDetails.date || !rescheduleDetails.timeStart || !rescheduleDetails.timeEnd) ? 0.5 : 1 }}
                 >
                   Confirm Reschedule
                 </button>
@@ -468,21 +530,41 @@ const Appointments = () => {
             <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {[
                 { label: 'Title', key: 'title', type: 'text', required: true },
-                { label: 'Manager Name', key: 'manager', type: 'text', required: true },
+                { label: 'Lead (Customer)', key: 'leadId', type: 'leadselect', required: true },
+                { label: 'Assign to Manager', key: 'manager', type: 'select', required: true },
                 { label: 'Phone', key: 'phone', type: 'text', required: true },
                 { label: 'Location', key: 'location', type: 'text', required: true },
               ].map(({ label, key, type, required }) => (
                 <div key={key}>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.4rem' }}>{label}</label>
-                  <input type={type} value={newVisit[key]} onChange={e => setNewVisit({ ...newVisit, [key]: e.target.value })}
-                    required={required}
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem' }} />
+                  {type === 'leadselect' ? (
+                    <select value={newVisit.leadId} onChange={e => {
+                      const lead = leads.find(l => l.id === e.target.value);
+                      setNewVisit({ ...newVisit, leadId: e.target.value, phone: lead?.phone || newVisit.phone });
+                    }}
+                      required={required}
+                      style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem', backgroundColor: 'var(--surface-color)' }}>
+                      <option value="">Select lead</option>
+                      {leads.map(l => <option key={l.id} value={l.id}>{l.id}{l.name ? ` — ${l.name}` : ''}</option>)}
+                    </select>
+                  ) : type === 'select' ? (
+                    <select value={newVisit[key]} onChange={e => setNewVisit({ ...newVisit, [key]: e.target.value })}
+                      required={required}
+                      style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem', backgroundColor: 'var(--surface-color)' }}>
+                      <option value="">Select manager</option>
+                      {SALES_TEAM.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  ) : (
+                    <input type={type} value={newVisit[key]} onChange={e => setNewVisit({ ...newVisit, [key]: e.target.value })}
+                      required={required}
+                      style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem' }} />
+                  )}
                 </div>
               ))}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.4rem' }}>Date</label>
-                  <input type="date" value={newVisit.date} onChange={e => setNewVisit({ ...newVisit, date: e.target.value })} required style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem' }} />
+                  <input type="date" min={new Date().toISOString().split('T')[0]} value={newVisit.date} onChange={e => setNewVisit({ ...newVisit, date: e.target.value })} required style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.4rem' }}>Start Time</label>
@@ -511,7 +593,7 @@ const Appointments = () => {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '0.5rem' }}>
                 <button type="button" className="btn btn-outline" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Schedule Visit</button>
+                <button type="submit" className="btn btn-primary" disabled={!newVisit.title || !newVisit.leadId || !newVisit.manager || !newVisit.phone || !newVisit.location || !newVisit.date || !newVisit.timeStart || !newVisit.timeEnd} style={{ opacity: (!newVisit.title || !newVisit.leadId || !newVisit.manager || !newVisit.phone || !newVisit.location || !newVisit.date || !newVisit.timeStart || !newVisit.timeEnd) ? 0.5 : 1 }}>Schedule Visit</button>
               </div>
             </form>
           </div>

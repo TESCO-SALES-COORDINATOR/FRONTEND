@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, CheckCircle2, AtSign, ChevronDown, Key } from 'lucide-react';
 import { useToast } from '../components/Toast';
-import { authApi, setSession } from '../api/client';
+import { authApi, setSession, clearSession } from '../api/client';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -24,6 +24,14 @@ const Login = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [generatedOtp, setGeneratedOtp] = useState('');
 
+  // Clear any lingering session when redirected here by a logout (e.g. from the Sales Manager app)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('loggedout') === '1') {
+      clearSession();
+    }
+  }, []);
+
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
@@ -35,6 +43,18 @@ const Login = () => {
       const data = await authApi.login(role, email, password);
       setSession(data.token, data.user);
       addToast('Welcome back to Nexus CRM!', 'success');
+
+      // Sales Manager has a dedicated web app — open it instead of the coordinator dashboard
+      const activeRole = data.user?.role || role;
+      if (activeRole === 'Sales Manager') {
+        const base = import.meta.env.VITE_SALES_MANAGER_URL || 'http://localhost:5174';
+        const u = data.user || {};
+        // Pass the logged-in manager's identity so the Manager app can show their assignments
+        const params = new URLSearchParams({ mgr: u.name || '', email: u.email || '' });
+        window.location.href = `${base}/?${params.toString()}`;
+        return;
+      }
+
       navigate('/dashboard');
     } catch (err) {
       addToast(err.message, 'error');

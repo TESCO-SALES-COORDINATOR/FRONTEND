@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { getUser } from '../api/client';
 import { 
   LayoutDashboard, 
   Users, 
@@ -28,6 +29,10 @@ const bottomItems = [
 ];
 
 const Sidebar = () => {
+  const user = getUser();
+  const userName = user?.name || 'Indhumathi T';
+  const userRole = user?.role || 'Sales Coordinator';
+  const userInitials = userName.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'IT';
   return (
     <div style={{
       width: '260px',
@@ -115,11 +120,11 @@ const Sidebar = () => {
           color: 'white',
           fontWeight: 'bold'
         }}>
-          AK
+          {userInitials}
         </div>
         <div>
-          <div style={{ color: 'white', fontSize: '0.875rem', fontWeight: '600' }}>Akash</div>
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>Sales Coordinator</div>
+          <div style={{ color: 'white', fontSize: '0.875rem', fontWeight: '600' }}>{userName}</div>
+          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>{userRole}</div>
         </div>
       </div>
     </div>

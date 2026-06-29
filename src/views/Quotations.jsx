@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Download, Eye, Plus, CheckCircle, Clock, X, ThumbsUp, Send, Upload } from 'lucide-react';
-
-const initialQuotesData = [
-  { id: 'QT-5001', leadId: 'LD-1001', client: 'Reference Client', project: 'PEB', amount: '₹100,000', gst: '₹18,000', approvalStatus: 'Pending', quotationStatus: 'In Preparation', revision: 'Rev 0', fileName: null },
-];
+import { FileText, Download, Eye, Plus, CheckCircle, Clock, X, ThumbsUp, Send, Upload, Trash2 } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 const getApprovalStatusStyle = (status) => {
   const base = {
@@ -50,28 +47,28 @@ const getQuotationStatusStyle = (status) => {
 const QUOTES_API = 'http://localhost:5000/api/quotations';
 
 const Quotations = () => {
+  const addToast = useToast();
   const [quotes, setQuotes] = useState([]);
   const [quotesLoaded, setQuotesLoaded] = useState(false);
+  const [leads, setLeads] = useState([]);
 
-  // Load from API; seed with reference if DB empty
+  // Load all leads so the Generate Quotation form can offer a Lead ID dropdown
+  useEffect(() => {
+    fetch('http://localhost:5000/api/leads')
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setLeads(d); })
+      .catch((e) => console.error('Failed to load leads:', e));
+  }, []);
+
+  // Load quotations from API (no reference/seed data)
   useEffect(() => {
     const load = async () => {
       try {
         const res = await fetch(QUOTES_API);
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setQuotes(data);
-        } else {
-          await fetch(`${QUOTES_API}/bulk`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(initialQuotesData)
-          });
-          setQuotes(initialQuotesData);
-        }
+        if (Array.isArray(data)) setQuotes(data);
       } catch (err) {
         console.error('Failed to load quotations:', err);
-        setQuotes(initialQuotesData);
       } finally {
         setQuotesLoaded(true);
       }
@@ -102,12 +99,26 @@ const Quotations = () => {
     const formattedAmount = newQuote.amount.startsWith('₹') ? newQuote.amount : `₹${newQuote.amount}`;
     const formattedGst = newQuote.gst.startsWith('₹') ? newQuote.gst : `₹${newQuote.gst}`;
     
-    setQuotes([...quotes, { 
-      ...newQuote, 
+    setQuotes([...quotes, {
+      ...newQuote,
       id: newId,
       amount: formattedAmount,
       gst: formattedGst
     }]);
+
+    // Record the quotation on the lead's shared history (visible to manager + coordinator)
+    if (newQuote.leadId) {
+      const lead = leads.find(l => l.id === newQuote.leadId);
+      if (lead) {
+        const stamp = new Date().toLocaleDateString('en-GB') + ', ' + new Date().toLocaleTimeString('en-US', { hour12: false });
+        const entry = { timestamp: stamp, message: `Quotation ${newId} generated (${formattedAmount}) by ${(JSON.parse(localStorage.getItem('crm_user') || 'null')?.name) || 'Coordinator'}`, remark: newQuote.project || '' };
+        const history = Array.isArray(lead.history) ? [...lead.history, entry] : [entry];
+        fetch(`http://localhost:5000/api/leads/${lead.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ history })
+        }).catch(err => console.error('Failed to update lead history:', err));
+      }
+    }
+
     setIsModalOpen(false);
     setNewQuote({ leadId: '', client: '', project: '', amount: '', gst: '', approvalStatus: 'Pending', quotationStatus: 'In Preparation', revision: 'Rev 0', fileName: null });
   };
@@ -118,21 +129,113 @@ const Quotations = () => {
 
   const handleQuotationStatusChange = (id, newStatus) => {
     setQuotes(quotes.map(q => q.id === id ? { ...q, quotationStatus: newStatus } : q));
+    addToast(`Quotation marked as "${newStatus}"`, 'success');
   };
 
   const handleFileUpload = (id, event) => {
     const file = event.target.files[0];
-    if (file) {
-      setQuotes(quotes.map(q => q.id === id ? { ...q, fileName: file.name } : q));
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const tooBig = file.size > 5 * 1024 * 1024;
+      setQuotes(prev => prev.map(q => q.id === id ? { ...q, fileName: file.name, fileData: tooBig ? null : reader.result } : q));
+      addToast(tooBig ? `Uploaded "${file.name}" (too large to preview)` : `Quotation "${file.name}" uploaded`, 'success');
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleRemoveFile = (id) => {
-    setQuotes(quotes.map(q => q.id === id ? { ...q, fileName: null } : q));
+    setQuotes(quotes.map(q => q.id === id ? { ...q, fileName: null, quotationStatus: 'In Preparation' } : q));
+    addToast('Uploaded quotation removed', 'info');
   };
 
-  // Compute card stats
-  const requestedCount = quotes.filter(q => q.quotationStatus === 'In Preparation' || q.quotationStatus === 'Inprepared').length;
+  // ── Quotation export / preview (generate a printable PDF document from row data) ──
+  const parseAmt = (v) => {
+    const n = parseFloat(String(v || '').replace(/[^0-9.]/g, ''));
+    return Number.isNaN(n) ? 0 : n;
+  };
+  const buildQuotationHtml = (q, autoPrint) => {
+    const amt = parseAmt(q.amount);
+    const gst = parseAmt(q.gst);
+    const total = amt + gst;
+    const fmt = (n) => '₹' + n.toLocaleString('en-IN');
+    const today = new Date().toLocaleDateString('en-GB');
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${q.id} - Quotation</title>
+    <style>
+      *{box-sizing:border-box;} body{font-family:Arial,Helvetica,sans-serif;color:#1E293B;margin:0;padding:40px;}
+      .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #4F46E5;padding-bottom:18px;margin-bottom:24px;}
+      .brand{font-size:22px;font-weight:800;color:#4F46E5;margin:0;}
+      .sub{color:#64748B;font-size:12px;margin:4px 0 0;}
+      .qid{text-align:right;} .qid h2{margin:0;font-size:18px;}
+      .meta{display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:24px;font-size:14px;}
+      .meta span{color:#64748B;display:block;font-size:12px;margin-bottom:2px;}
+      table{width:100%;border-collapse:collapse;margin-top:8px;}
+      th,td{padding:12px;border-bottom:1px solid #E2E8F0;text-align:left;font-size:14px;}
+      th{background:#F1F5F9;color:#475569;}
+      .right{text-align:right;}
+      .total td{font-weight:800;font-size:16px;border-top:2px solid #4F46E5;}
+      .badge{display:inline-block;padding:3px 10px;border-radius:9999px;font-size:12px;font-weight:600;background:#FEF3C7;color:#92400E;}
+      .badge.ok{background:#DCFCE7;color:#166534;}
+      .foot{margin-top:36px;color:#94A3B8;font-size:12px;}
+    </style></head><body>
+      <div class="head">
+        <div><p class="brand">TESCO Sales CRM</p><p class="sub">Construction &amp; Roofing Solutions</p></div>
+        <div class="qid"><h2>QUOTATION</h2><p class="sub">${q.id} &bull; ${today}</p></div>
+      </div>
+      <div class="meta">
+        <div><span>Lead ID</span>${q.leadId || 'N/A'}</div>
+        <div><span>Client</span>${q.client || '-'}</div>
+        <div><span>Service</span>${q.project || '-'}</div>
+        <div><span>Approval Status</span><span class="badge ${q.approvalStatus === 'Approved' ? 'ok' : ''}">${q.approvalStatus}</span></div>
+      </div>
+      <table>
+        <thead><tr><th>Description</th><th class="right">Amount</th></tr></thead>
+        <tbody>
+          <tr><td>${q.project || 'Service'} (${q.revision || 'Rev 0'})</td><td class="right">${fmt(amt)}</td></tr>
+          <tr><td>GST</td><td class="right">${fmt(gst)}</td></tr>
+          <tr class="total"><td>Total</td><td class="right">${fmt(total)}</td></tr>
+        </tbody>
+      </table>
+      <p class="foot">This is a system-generated quotation from TESCO Sales CRM.</p>
+      ${autoPrint ? '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print();},300);}<\/scr' + 'ipt>' : ''}
+    </body></html>`;
+  };
+  const openQuotationDoc = (q, autoPrint) => {
+    const win = window.open('', '_blank');
+    if (!win) { addToast('Please allow pop-ups to export the quotation.', 'warning'); return; }
+    win.document.write(buildQuotationHtml(q, autoPrint));
+    win.document.close();
+  };
+  // Preview/Download show the actual uploaded document when one exists; otherwise the generated quotation.
+  const handlePreview = (q) => {
+    if (q.fileData) {
+      const w = window.open('', '_blank');
+      if (!w) { addToast('Please allow pop-ups to preview the document.', 'warning'); return; }
+      w.document.write(`<title>${q.fileName || 'Quotation'}</title><iframe src="${q.fileData}" style="border:0;width:100vw;height:100vh"></iframe>`);
+      w.document.close();
+      return;
+    }
+    openQuotationDoc(q, false);
+  };
+  const handleExportPdf = (q) => {
+    if (q.fileData) {
+      const a = document.createElement('a');
+      a.href = q.fileData;
+      a.download = q.fileName || 'quotation';
+      document.body.appendChild(a); a.click(); a.remove();
+      return;
+    }
+    openQuotationDoc(q, true);
+  };
+  const handleDeleteQuote = (id) => {
+    const q = quotes.find(x => x.id === id);
+    setQuotes(quotes.filter(x => x.id !== id));
+    if (q?.id) fetch(`${QUOTES_API}/${q.id}`, { method: 'DELETE' }).catch(err => console.error('Failed to delete quotation:', err));
+    addToast('Quotation deleted', 'info');
+  };
+
+  // Compute card stats live from the quotations we have
+  const requestedCount = quotes.length;
   const pendingCount = quotes.filter(q => q.approvalStatus === 'Pending').length;
   const completedCount = quotes.filter(q => q.quotationStatus === 'Prepared').length;
   const approvedCount = quotes.filter(q => q.approvalStatus === 'Approved').length;
@@ -151,7 +254,7 @@ const Quotations = () => {
       {/* ── 4 Stat Cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem' }}>
         {[
-          { label: 'Requested Quotations', value: requestedCount, Icon: FileText, color: '#4F46E5', bg: '#EEF4FF', border: '#C7D2FE', sub: 'Draft & initial requests' },
+          { label: 'Requested Quotations', value: requestedCount, Icon: FileText, color: '#4F46E5', bg: '#EEF4FF', border: '#C7D2FE', sub: 'All quotation requests' },
           { label: 'Pending Quotations', value: pendingCount, Icon: Clock, color: '#D97706', bg: '#FFF7ED', border: '#FED7AA', sub: 'Awaiting client/mgr approval' },
           { label: 'Completed Quotations', value: completedCount, Icon: Send, color: '#0EA5E9', bg: '#F0F9FF', border: '#BAE6FD', sub: 'Prepared & sent to clients' },
           { label: 'Approved Quotations', value: approvedCount, Icon: ThumbsUp, color: '#16A34A', bg: '#ECFDF5', border: '#BBF7D0', sub: 'Accepted quotations' },
@@ -224,10 +327,12 @@ const Quotations = () => {
                       <select
                         value={quote.quotationStatus}
                         onChange={(e) => handleQuotationStatusChange(quote.id, e.target.value)}
-                        style={getQuotationStatusStyle(quote.quotationStatus)}
+                        disabled={!quote.fileName}
+                        title={!quote.fileName ? 'Upload the quotation PDF first' : ''}
+                        style={{ ...getQuotationStatusStyle(quote.quotationStatus), opacity: quote.fileName ? 1 : 0.5, cursor: quote.fileName ? 'pointer' : 'not-allowed' }}
                       >
-                        <option value="Prepared" style={{ color: '#1E293B', backgroundColor: '#fff' }}>Prepared</option>
                         <option value="In Preparation" style={{ color: '#1E293B', backgroundColor: '#fff' }}>In Preparation</option>
+                        <option value="Prepared" style={{ color: '#1E293B', backgroundColor: '#fff' }}>Prepared</option>
                       </select>
                       <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: '0.55rem', opacity: 0.7, color: 'inherit' }}>▼</span>
                     </div>
@@ -284,11 +389,14 @@ const Quotations = () => {
                   {/* Action Column */}
                   <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                      <button style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Preview">
+                      <button onClick={() => handlePreview(quote)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Preview">
                         <Eye size={18} />
                       </button>
-                      <button style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Export PDF">
+                      <button onClick={() => handleExportPdf(quote)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Export PDF">
                         <Download size={18} />
+                      </button>
+                      <button onClick={() => handleDeleteQuote(quote.id)} style={{ background: 'transparent', border: 'none', color: '#DC2626', cursor: 'pointer' }} title="Delete quotation">
+                        <Trash2 size={18} />
                       </button>
                     </div>
                   </td>
@@ -318,7 +426,15 @@ const Quotations = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Lead ID</label>
-                  <input required value={newQuote.leadId} onChange={(e) => setNewQuote({...newQuote, leadId: e.target.value})} type="text" placeholder="e.g. LD-1007" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none' }} />
+                  <select required value={newQuote.leadId} onChange={(e) => {
+                    const lead = leads.find(l => l.id === e.target.value);
+                    setNewQuote({ ...newQuote, leadId: e.target.value, client: lead ? (lead.name || '') : newQuote.client });
+                  }} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)' }}>
+                    <option value="">Select lead</option>
+                    {leads.map(l => (
+                      <option key={l.id} value={l.id}>{l.id}{l.name ? ` — ${l.name}` : ''}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Client Name</label>
@@ -347,7 +463,7 @@ const Quotations = () => {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-outline">Cancel</button>
-                <button type="submit" className="btn btn-primary">Generate</button>
+                <button type="submit" className="btn btn-primary" disabled={!newQuote.leadId || !newQuote.client || !newQuote.project || !newQuote.amount || !newQuote.gst} style={{ opacity: (!newQuote.leadId || !newQuote.client || !newQuote.project || !newQuote.amount || !newQuote.gst) ? 0.5 : 1 }}>Generate</button>
               </div>
             </form>
           </div>

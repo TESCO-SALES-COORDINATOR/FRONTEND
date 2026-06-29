@@ -5,10 +5,20 @@ import { useToast } from '../components/Toast';
 const LEAD_SOURCES = [
   'Referral',
   'Website Enquiry',
+  'Email',
+  'WhatsApp',
   'Cold Calling',
   'Meta Leads',
   'LinkedIn Leads',
   'Organic Leads',
+];
+
+// The 4 sales managers leads can be assigned to (Indhumathi assigns, so she is not a target)
+const SALES_TEAM = [
+  'Azar Abdullah A',
+  'Praveenraja P',
+  'Suresh P',
+  'Agsal A',
 ];
 
 const getSourceStyles = (source) => {
@@ -19,6 +29,8 @@ const getSourceStyles = (source) => {
     case 'meta leads':      return { bg: '#FCE7F3', color: '#9D174D', dot: '#EC4899' };
     case 'linkedin leads':  return { bg: '#E0F2FE', color: '#075985', dot: '#0EA5E9' };
     case 'organic leads':   return { bg: '#D1FAE5', color: '#065F46', dot: '#10B981' };
+    case 'email':           return { bg: '#E0E7FF', color: '#3730A3', dot: '#6366F1' };
+    case 'whatsapp':        return { bg: '#DCFCE7', color: '#166534', dot: '#22C55E' };
     default:                return { bg: '#F1F5F9', color: '#475569', dot: '#94A3B8' };
   }
 };
@@ -130,13 +142,10 @@ const LeadManagement = () => {
     }).catch(err => console.error('Failed to sync leads to API:', err));
   }, [leads, leadsLoaded]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [dateRange, setDateRange] = useState({
-    start: new Date().toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0]
-  });
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState('Today');
+  const [selectedPreset, setSelectedPreset] = useState('All Time');
   const [rangeSelectionState, setRangeSelectionState] = useState('start');
   const [currentNavDate, setCurrentNavDate] = useState(new Date());
 
@@ -229,19 +238,10 @@ const LeadManagement = () => {
     if (!day) return;
     const formatted = day.toISOString().split('T')[0];
     
-    if (!rangeSelectionState || rangeSelectionState === 'start') {
-      setDateRange({ start: formatted, end: '' });
-      setRangeSelectionState('end');
-      setSelectedPreset('Custom');
-    } else {
-      if (formatted < dateRange.start) {
-        setDateRange({ start: formatted, end: dateRange.start });
-      } else {
-        setDateRange({ ...dateRange, end: formatted });
-      }
-      setRangeSelectionState('start');
-      setIsCalendarOpen(false);
-    }
+    // Single-date selection: show only that date's leads
+    setDateRange({ start: formatted, end: formatted });
+    setSelectedPreset('Custom');
+    setIsCalendarOpen(false);
   };
 
   const formatDateDisplay = (dateStr) => {
@@ -1132,9 +1132,9 @@ const LeadManagement = () => {
                   >
                     <option value="All" style={{ color: 'var(--text-main)' }}>ASSIGN TO (ALL)</option>
                     <option value="Unassigned" style={{ color: 'var(--text-main)' }}>UNASSIGNED</option>
-                    <option value="Sarah Smith" style={{ color: 'var(--text-main)' }}>SARAH SMITH</option>
-                    <option value="Mike Johnson" style={{ color: 'var(--text-main)' }}>MIKE JOHNSON</option>
-                    <option value="Alex Wong" style={{ color: 'var(--text-main)' }}>ALEX WONG</option>
+                    {SALES_TEAM.map((name) => (
+                      <option key={name} value={name} style={{ color: 'var(--text-main)' }}>{name.toUpperCase()}</option>
+                    ))}
                   </select>
                 </th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Follow-up</th>
@@ -1252,9 +1252,9 @@ const LeadManagement = () => {
                     }}
                   >
                     <option value="Unassigned">Unassigned</option>
-                    <option value="Sarah Smith">Sarah Smith</option>
-                    <option value="Mike Johnson">Mike Johnson</option>
-                    <option value="Alex Wong">Alex Wong</option>
+                    {SALES_TEAM.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
                   </select>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.followUp}</td>
@@ -1371,7 +1371,7 @@ const LeadManagement = () => {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-outline">Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Lead</button>
+                <button type="submit" className="btn btn-primary" disabled={!newLead.name || !newLead.projectType || !newLead.phone || !newLead.source} style={{ opacity: (!newLead.name || !newLead.projectType || !newLead.phone || !newLead.source) ? 0.5 : 1 }}>Save Lead</button>
               </div>
             </form>
           </div>
@@ -1937,11 +1937,9 @@ const LeadManagement = () => {
 
                   {/* Sort & Map Timeline entries */}
                   {(() => {
+                    // Show every logged event for this lead (status, assignment, quotation, appointment, visit, notes…)
                     const historyList = [...(selectedLeadForTimeline.history || [])]
-                      .filter(h => {
-                        const m = h.message.toLowerCase();
-                        return m.includes('status') || m.includes('created') || m.includes('received');
-                      });
+                      .filter(h => h && (h.message || h.event));
 
                     if (timelineSortOrder === 'desc') {
                       historyList.reverse();
@@ -1961,7 +1959,7 @@ const LeadManagement = () => {
                       let iconBg = '#F1F5F9';
                       let iconColor = '#64748B';
 
-                      const msg = h.message.toLowerCase();
+                      const msg = (h.message || h.event || '').toLowerCase();
 
                       if (msg.includes('created') || msg.includes('received')) {
                         Icon = UserPlus;
@@ -2048,12 +2046,12 @@ const LeadManagement = () => {
                             gap: '0.25rem'
                           }}>
                             <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '600' }}>
-                              {h.timestamp}
+                              {h.timestamp || h.date}
                             </span>
                             <span style={{ color: 'var(--text-main)', fontWeight: '500', lineHeight: '1.4' }}>
-                              {h.message}
+                              {h.message || h.event}
                             </span>
-                            {h.remark && (
+                            {(h.remark || h.meetingRemarks) && (
                               <div style={{ 
                                 display: 'block', 
                                 borderLeft: '3px solid var(--secondary-color)', 
@@ -2064,7 +2062,7 @@ const LeadManagement = () => {
                                 fontSize: '0.75rem',
                                 lineHeight: '1.4'
                               }}>
-                                <strong>Remark:</strong> &ldquo;{h.remark}&rdquo;
+                                <strong>Remark:</strong> &ldquo;{h.remark || h.meetingRemarks}&rdquo;
                               </div>
                             )}
                           </div>

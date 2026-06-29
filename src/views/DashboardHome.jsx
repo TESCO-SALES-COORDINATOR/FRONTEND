@@ -9,6 +9,7 @@ import {
   PieChart, Pie, Cell, AreaChart, Area, FunnelChart, Funnel, LabelList
 } from 'recharts';
 import { useToast } from '../components/Toast';
+import { useNavigate } from 'react-router-dom';
 
 // --- MOCK DATA ---
 const pipelineData = [
@@ -44,10 +45,10 @@ const KpiCard = ({ title, value, subtitle, icon: Icon, color, bg, borderColor, s
   </div>
 );
 
-const SectionHeader = ({ title, action }) => (
+const SectionHeader = ({ title, action, onAction }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
     <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: '600' }}>{title}</h3>
-    {action && <button className="btn btn-outline" style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem' }}>{action}</button>}
+    {action && <button className="btn btn-outline" style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem' }} onClick={onAction}>{action}</button>}
   </div>
 );
 
@@ -59,6 +60,7 @@ const PROJECTS_API = 'http://localhost:5000/api/projects';
 
 const DashboardHome = () => {
   const addToast = useToast();
+  const navigate = useNavigate();
 
   // Live lead data from API for KPI cards
   const [allLeads, setAllLeads] = useState([]);
@@ -120,14 +122,30 @@ const DashboardHome = () => {
   // Live quotation count for the KPI card
   const quotationPreparedCount = liveQuotes.length;
 
-  // Live appointments for the dashboard list (normalized)
-  const liveAppointments = allAppointments.map(a => ({
-    id: a.id,
-    client: a.title || a.manager,
-    type: a.type,
-    time: a.timeStart,
-    status: a.status
+  // Derive Payment Collection from live quotations (no hardcoded values)
+  const parseAmt = (v) => { const n = parseFloat(String(v || '').replace(/[^0-9.]/g, '')); return Number.isNaN(n) ? 0 : n; };
+  const quoteTotal = (q) => parseAmt(q.amount) + parseAmt(q.gst);
+  const fmtCompact = (n) => n >= 1e7 ? '₹' + (n / 1e7).toFixed(2) + 'Cr' : n >= 1e5 ? '₹' + (n / 1e5).toFixed(2) + 'L' : n >= 1e3 ? '₹' + Math.round(n / 1e3) + 'K' : '₹' + Math.round(n);
+  const isReceived = (q) => q.approvalStatus === 'Approved' && q.quotationStatus === 'Prepared';
+  const collectedTotal = liveQuotes.filter(isReceived).reduce((s, q) => s + quoteTotal(q), 0);
+  const pendingTotal = liveQuotes.filter((q) => !isReceived(q)).reduce((s, q) => s + quoteTotal(q), 0);
+  const livePayments = liveQuotes.slice(0, 4).map((q) => ({
+    client: q.client,
+    amount: fmtCompact(quoteTotal(q)),
+    status: isReceived(q) ? 'Received' : q.approvalStatus === 'Approved' ? 'Advance' : 'Pending',
   }));
+
+  // Today's appointments only (normalized)
+  const _todayStr = new Date().toISOString().split('T')[0];
+  const liveAppointments = allAppointments
+    .filter(a => a.date === _todayStr)
+    .map(a => ({
+      id: a.id,
+      client: a.title || a.manager,
+      type: a.type,
+      time: a.timeStart,
+      status: a.status
+    }));
   const [dateRange, setDateRange] = useState({
     start: new Date().toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
@@ -258,7 +276,7 @@ const DashboardHome = () => {
         border: '1px solid rgba(49, 46, 129, 0.1)',
       }}>
         <div>
-          <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Welcome Back, Akash 👋</h1>
+          <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Welcome Back, {(JSON.parse(localStorage.getItem('crm_user') || 'null')?.name) || 'Indhumathi T'} 👋</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '1rem', margin: 0 }}>
             Manage construction leads, appointments, quotations, and project coordination efficiently.
           </p>
@@ -428,13 +446,13 @@ const DashboardHome = () => {
         <KpiCard title="Junk Leads" value={junkLeadsCount} subtitle="Low quality" icon={Trash} color="#6B7280" bg="#F3F4F6" borderColor="#D1D5DB" />
         <KpiCard title="Appointment Fixed" value={appointmentFixedCount} subtitle="+5 New Today" icon={CalendarCheck} color="#22C55E" bg="#ECFDF5" borderColor="#BBF7D0" />
         <KpiCard title="Quotation Prepared" value={quotationPreparedCount} subtitle="Total Quotations" icon={FileText} color="#6366F1" bg="#EEF2FF" borderColor="#C7D2FE" />
-        <KpiCard title="Payment Collection" value="₹8.4L" subtitle="₹2.1L Pending" icon={DollarSign} color="#16A34A" bg="#F0FDF4" borderColor="#86EFAC" />
+        <KpiCard title="Payment Collection" value={fmtCompact(collectedTotal)} subtitle={`${fmtCompact(pendingTotal)} Pending`} icon={DollarSign} color="#16A34A" bg="#F0FDF4" borderColor="#86EFAC" />
       </div>
 
       {/* Row 2: Appointments | Quotation Overview */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         <div className="card">
-          <SectionHeader title="Today's Appointments" action="View All" />
+          <SectionHeader title="Today's Appointments" action="View All" onAction={() => navigate('/appointments')} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {liveAppointments.length === 0 && (
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '0.5rem' }}>No appointments yet.</div>
@@ -454,7 +472,7 @@ const DashboardHome = () => {
         </div>
 
         <div className="card">
-          <SectionHeader title="Quotation Overview" action="View All" />
+          <SectionHeader title="Quotation Overview" action="View All" onAction={() => navigate('/quotations')} />
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
@@ -481,7 +499,7 @@ const DashboardHome = () => {
       {/* Row 4: Payment Collection | Project Filing */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         <div className="card">
-          <SectionHeader title="Payment Collection" action="View All" />
+          <SectionHeader title="Payment Collection" action="View All" onAction={() => navigate('/payments')} />
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
@@ -491,12 +509,15 @@ const DashboardHome = () => {
               </tr>
             </thead>
             <tbody>
-              {paymentsData.map((pay, idx) => (
-                <tr key={idx} style={{ borderBottom: idx === paymentsData.length - 1 ? 'none' : '1px solid var(--border-color)' }}>
+              {livePayments.length === 0 && (
+                <tr><td colSpan={3} style={{ padding: '0.75rem 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No payments yet.</td></tr>
+              )}
+              {livePayments.map((pay, idx) => (
+                <tr key={idx} style={{ borderBottom: idx === livePayments.length - 1 ? 'none' : '1px solid var(--border-color)' }}>
                   <td style={{ padding: '0.75rem 0', fontSize: '0.875rem', fontWeight: '500' }}>{pay.client}</td>
                   <td style={{ padding: '0.75rem 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>{pay.amount}</td>
                   <td style={{ padding: '0.75rem 0' }}>
-                    <span className={`badge ${pay.status === 'Overdue' ? 'badge-danger' : 'badge-success'}`}>{pay.status}</span>
+                    <span className={`badge ${pay.status === 'Pending' ? 'badge-warning' : 'badge-success'}`}>{pay.status}</span>
                   </td>
                 </tr>
               ))}
@@ -505,7 +526,7 @@ const DashboardHome = () => {
         </div>
 
         <div className="card">
-          <SectionHeader title="Project Filing Status" action="View All" />
+          <SectionHeader title="Project Filing Status" action="View All" onAction={() => navigate('/projects')} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {liveProjects.map((proj, idx) => (
               <div key={idx} style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

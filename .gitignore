@@ -4,4 +4,4 @@ dist/
 *.local
 .env
 .env.local
-.env.*.local
+.env.*
