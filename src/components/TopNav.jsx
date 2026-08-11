@@ -1,88 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, User } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-
-const API = 'http://localhost:5000/api';
-
-const timeAgo = (date) => {
-  if (!date) return '';
-  const diff = Date.now() - new Date(date).getTime();
-  if (diff < 0) return 'just now';
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-};
+// Reuse the SAME notification derivation + timestamp helpers + read-set as the
+// Notifications page, so the bell dropdown and the page always show identical
+// items, order and timestamps.
+import { buildNotifications, timeAgo, fmtDateTime, loadReadSet, READ_KEY } from '../views/Notifications';
 
 const TopNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState([]);
+  const [readVersion, setReadVersion] = useState(0);
   const ref = useRef(null);
 
   const path = location.pathname.substring(1).replace('-', ' ');
   const title = path.charAt(0).toUpperCase() + path.slice(1);
 
   useEffect(() => {
-    const build = async () => {
-      const [appts, quotes] = await Promise.all([
-        fetch(`${API}/appointments`).then((r) => r.json()).catch(() => []),
-        fetch(`${API}/quotations`).then((r) => r.json()).catch(() => []),
-      ]);
-      const items = [];
-
-      // Reschedules done by managers — highest priority
-      (Array.isArray(appts) ? appts : [])
-        .filter((a) => a.rescheduledAt)
-        .forEach((a) => items.push({
-          id: `resched-${a._id || a.id}-${a.rescheduledAt}`,
-          text: `Rescheduled by ${a.rescheduledBy || 'manager'}: ${a.title || 'Appointment'} → ${a.date}${a.timeStart ? ' ' + a.timeStart : ''}`,
-          sortDate: a.rescheduledAt,
-        }));
-
-      // Visits completed by a manager
-      (Array.isArray(appts) ? appts : [])
-        .filter((a) => a.completedAt)
-        .forEach((a) => items.push({
-          id: `completed-${a._id || a.id}`,
-          text: `Visit completed by ${a.completedBy || 'manager'}: ${a.title || 'Visit'}`,
-          sortDate: a.completedAt,
-        }));
-
-      // Visits created by a manager
-      (Array.isArray(appts) ? appts : [])
-        .filter((a) => a.createdBy)
-        .forEach((a) => items.push({
-          id: `created-${a._id || a.id}`,
-          text: `New visit by ${a.createdBy}: ${a.title || 'Visit'} on ${a.date || ''}`,
-          sortDate: a.createdAt || a.date,
-        }));
-
-      // Upcoming appointments
-      (Array.isArray(appts) ? appts : [])
-        .filter((a) => a.status !== 'Completed')
-        .forEach((a) => items.push({
-          id: `appt-${a._id || a.id}`,
-          text: `${a.title || 'Appointment'}${a.manager ? ' — ' + a.manager : ''} on ${a.date || ''}`,
-          sortDate: a.createdAt || a.date,
-        }));
-
-      // Pending quotations
-      (Array.isArray(quotes) ? quotes : [])
-        .filter((q) => q.approvalStatus === 'Pending')
-        .forEach((q) => items.push({
-          id: `quote-${q.id}`,
-          text: `Quotation ${q.id} pending approval`,
-          sortDate: q.updatedAt || q.createdAt,
-        }));
-
-      items.sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0));
-      setNotifs(items.slice(0, 15));
-    };
-    build();
+    let active = true;
+    buildNotifications().then((items) => { if (active) setNotifs(items); });
+    return () => { active = false; };
   }, [location.pathname]);
 
   // Close the dropdown when clicking outside
@@ -91,6 +29,11 @@ const TopNav = () => {
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
+
+  // Badge shows only UNREAD notifications (read set is shared with the Notifications page)
+  const readSet = loadReadSet();
+  const unreadCount = notifs.filter((n) => !readSet.has(n.id)).length;
+  void readVersion; // referenced so the badge recomputes after marking read
 
   return (
     <div className="glass-panel" style={{
@@ -109,12 +52,22 @@ const TopNav = () => {
           <div ref={ref} style={{ position: 'relative' }}>
             <button
               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', position: 'relative', display: 'flex' }}
-              onClick={() => setOpen((o) => !o)}
+              onClick={() => {
+                const next = !open;
+                // Opening the panel marks the shown notifications as read → clears the badge
+                if (next) {
+                  const set = loadReadSet();
+                  notifs.forEach((n) => set.add(n.id));
+                  localStorage.setItem(READ_KEY, JSON.stringify([...set]));
+                  setReadVersion((v) => v + 1);
+                }
+                setOpen(next);
+              }}
             >
               <Bell size={20} />
-              {notifs.length > 0 && (
+              {unreadCount > 0 && (
                 <span style={{ position: 'absolute', top: '-6px', right: '-6px', minWidth: '18px', height: '18px', padding: '0 5px', backgroundColor: '#ef4444', color: '#ffffff', fontSize: '0.65rem', fontWeight: '700', borderRadius: '9999px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff', lineHeight: 1 }}>
-                  {notifs.length}
+                  {unreadCount}
                 </span>
               )}
             </button>
@@ -135,7 +88,7 @@ const TopNav = () => {
                   notifs.map((n) => (
                     <div key={n.id} style={{ padding: '0.7rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                       <span style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>{n.text}</span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{timeAgo(n.sortDate)}</span>
+                      <span title={fmtDateTime(n.sortDate)} style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{timeAgo(n.sortDate)} · {fmtDateTime(n.sortDate)}</span>
                     </div>
                   ))
                 )}

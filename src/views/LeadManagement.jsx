@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Phone, MoreVertical, X, Edit2, Mail, Trash2, Users, Flame, CalendarCheck, Clock, Calendar, ChevronDown, ChevronUp, MapPin, Activity, User, FileText, UserPlus, Sparkles, Thermometer, Snowflake, FileSignature, HandshakeIcon, CheckCircle2, Trash, Send, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import AddLeadWizard from '../components/AddLeadWizard';
+import { Search, Filter, Phone, MoreVertical, X, Edit2, Mail, Trash2, Users, Flame, CalendarCheck, Clock, Calendar, ChevronDown, ChevronUp, MapPin, Activity, User, FileText, UserPlus, Sparkles, Thermometer, Snowflake, FileSignature, HandshakeIcon, CheckCircle2, XCircle, Trash, Send, ArrowUpDown, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import { statusColor, sourceColor } from '../theme/statusColors';
 
 const LEAD_SOURCES = [
   'Referral',
   'Website Enquiry',
-  'Email',
-  'WhatsApp',
   'Cold Calling',
   'Meta Leads',
-  'LinkedIn Leads',
+  'Google Ads',
   'Organic Leads',
 ];
 
@@ -21,56 +21,34 @@ const SALES_TEAM = [
   'Agsal A',
 ];
 
-const getSourceStyles = (source) => {
-  switch ((source || '').toLowerCase()) {
-    case 'referral':         return { bg: '#EDE9FE', color: '#5B21B6', dot: '#7C3AED' };
-    case 'website enquiry': return { bg: '#DBEAFE', color: '#1D4ED8', dot: '#3B82F6' };
-    case 'cold calling':    return { bg: '#FEF3C7', color: '#92400E', dot: '#F59E0B' };
-    case 'meta leads':      return { bg: '#FCE7F3', color: '#9D174D', dot: '#EC4899' };
-    case 'linkedin leads':  return { bg: '#E0F2FE', color: '#075985', dot: '#0EA5E9' };
-    case 'organic leads':   return { bg: '#D1FAE5', color: '#065F46', dot: '#10B981' };
-    case 'email':           return { bg: '#E0E7FF', color: '#3730A3', dot: '#6366F1' };
-    case 'whatsapp':        return { bg: '#DCFCE7', color: '#166534', dot: '#22C55E' };
-    default:                return { bg: '#F1F5F9', color: '#475569', dot: '#94A3B8' };
-  }
-};
+// Delegate to the shared canonical palette so every app colours sources identically.
+const getSourceStyles = (source) => sourceColor(source);
 
-const initialLeadsData = [
-  {
-    id: 'LD-1001',
-    date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    name: 'Reference Lead',
-    type: 'new leads',
-    projectType: 'PEB',
-    phone: '+91 90000 00000',
-    source: 'Website Enquiry',
-    budget: '₹100k',
-    status: 'New Lead',
-    manager: 'Unassigned',
-    followUp: 'No Date',
-    priority: 'Medium',
-    notes: 'Sample reference lead.',
-    history: [
-      { timestamp: new Date().toLocaleDateString('en-GB') + ', ' + new Date().toLocaleTimeString('en-US', { hour12: false }), message: 'Lead created (reference)' }
-    ]
-  }
-];
+// Delegate to the shared canonical palette so every app colours statuses identically.
+const getStatusStyles = (status) => statusColor(status);
 
-const getStatusStyles = (status) => {
-  const s = (status || '').toLowerCase();
-  switch(s) {
-    case 'hot': case 'hot leads': return { bg: '#FEE2E2', color: '#991B1B' };
-    case 'warm': case 'warm leads': return { bg: '#FEF3C7', color: '#92400E' };
-    case 'cold': case 'cold leads': return { bg: '#E2E8F0', color: '#475569' };
-    case 'appointment fixed': return { bg: '#DCFCE7', color: '#166534' };
-    case 'new lead': return { bg: '#DBEAFE', color: '#1E40AF' };
-    case 'qutation send': case 'quotation send': return { bg: '#E0E7FF', color: '#4338CA' };
-    case 'negotation': case 'negotiation': return { bg: '#FEF3C7', color: '#B45309' };
-    case 'order confirmed': return { bg: '#DCFCE7', color: '#15803D' };
-    case 'junk': return { bg: '#F3F4F6', color: '#374151' };
-    default: return { bg: '#F1F5F9', color: '#475569' };
-  }
+// Map any stored status/source variant onto the EXACT dropdown option value, so the
+// <select> always displays the right label (and therefore the right colour) instead of
+// silently falling back to the first option when the stored value differs (e.g. a lead
+// saved as "Hot" wouldn't match the option "Hot Leads", or "Google Leads" vs "Google Ads").
+const STATUS_OPTION = {
+  'new': 'New Lead', 'new lead': 'New Lead', 'new leads': 'New Lead',
+  'hot': 'Hot Leads', 'hot leads': 'Hot Leads',
+  'warm': 'Warm Leads', 'warm leads': 'Warm Leads',
+  'cold': 'Cold Leads', 'cold leads': 'Cold Leads',
+  'appointment fixed': 'Appointment Fixed', 'appt fixed': 'Appointment Fixed',
+  'quotation send': 'Quotation Send', 'quotation sent': 'Quotation Send', 'qutation send': 'Quotation Send',
+  'order confirmed': 'Order Confirmed',
+  'junk': 'Junk', 'lost': 'Lost',
 };
+const canonStatus = (v) => STATUS_OPTION[String(v || '').trim().toLowerCase()] || v || 'New Lead';
+const SOURCE_OPTION = {
+  'referral': 'Referral', 'website enquiry': 'Website Enquiry',
+  'cold calling': 'Cold Calling', 'meta leads': 'Meta Leads', 'meta': 'Meta Leads', 'meta ads': 'Meta Leads',
+  'google ads': 'Google Ads', 'google leads': 'Google Ads', 'google': 'Google Ads',
+  'organic leads': 'Organic Leads', 'organic': 'Organic Leads',
+};
+const canonSource = (v) => SOURCE_OPTION[String(v || '').trim().toLowerCase()] || v || 'Website Enquiry';
 
 const LeadOverviewCard = ({ title, value, subtitle, icon: Icon, color, bg, borderColor, isSelected, onClick }) => (
   <div 
@@ -106,30 +84,44 @@ const LeadManagement = () => {
   const [leads, setLeads] = useState([]);
   const [leadsLoaded, setLeadsLoaded] = useState(false);
 
-  // Load leads from backend API on mount (seed with initial data if DB empty)
+  // Load leads from backend API on mount, then keep polling so leads created by
+  // the n8n `lead-mail-PRODUCTION` automation appear automatically — no manual import.
+  //   • First load  -> replace state with whatever the DB holds.
+  //   • Each poll   -> MERGE in any server leads we don't already have locally,
+  //                    without overwriting leads already in state (so in-progress
+  //                    edits and the bulk-sync round-trip are never clobbered).
   useEffect(() => {
+    let cancelled = false;
+    let firstLoad = true;
+
     const loadLeads = async () => {
       try {
         const res = await fetch(API_URL);
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (cancelled || !Array.isArray(data)) return;
+
+        if (firstLoad) {
           setLeads(data);
         } else {
-          await fetch(`${API_URL}/bulk`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(initialLeadsData)
+          // Append only brand-new leads (by id) coming from the automation.
+          setLeads(prev => {
+            const known = new Set(prev.map(l => l.id));
+            const fresh = data.filter(l => l && l.id && !known.has(l.id));
+            return fresh.length ? [...prev, ...fresh] : prev;
           });
-          setLeads(initialLeadsData);
         }
       } catch (err) {
         console.error('Failed to load leads from API:', err);
-        setLeads(initialLeadsData);
+        if (firstLoad && !cancelled) setLeads([]);
       } finally {
-        setLeadsLoaded(true);
+        if (!cancelled && firstLoad) setLeadsLoaded(true);
+        firstLoad = false;
       }
     };
+
     loadLeads();
+    const poll = setInterval(loadLeads, 15000); // auto-show automation imports
+    return () => { cancelled = true; clearInterval(poll); };
   }, []);
 
   // Sync leads to backend API whenever they change
@@ -141,6 +133,20 @@ const LeadManagement = () => {
       body: JSON.stringify(leads)
     }).catch(err => console.error('Failed to sync leads to API:', err));
   }, [leads, leadsLoaded]);
+
+  // Live appointment + quotation records so the overview cards reflect real data
+  // (not just leads whose status text says "Appointment Fixed" / "Quotation Send").
+  const [apptRecords, setApptRecords] = useState([]);
+  const [quoteRecords, setQuoteRecords] = useState([]);
+  const [projectRecords, setProjectRecords] = useState([]);
+  useEffect(() => {
+    fetch('http://localhost:5000/api/appointments').then(r => r.json()).then(d => { if (Array.isArray(d)) setApptRecords(d); }).catch(() => {});
+    fetch('http://localhost:5000/api/quotations').then(r => r.json()).then(d => { if (Array.isArray(d)) setQuoteRecords(d); }).catch(() => {});
+    fetch('http://localhost:5000/api/projects').then(r => r.json()).then(d => { if (Array.isArray(d)) setProjectRecords(d); }).catch(() => {});
+  }, []);
+  // Overview counts are computed below (after the header-filter state is declared) so the
+  // "All Managers" dropdown scopes them too.
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
@@ -257,40 +263,324 @@ const LeadManagement = () => {
     name: '', projectType: '', phone: '', budget: '', source: '', status: 'Lead Received', notes: ''
   });
 
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  // The lead currently being edited in the Add New Lead wizard (null = adding new)
   const [editLead, setEditLead] = useState(null);
 
+  // Lead pending deletion (drives the confirmation popup)
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // Clicking Edit re-opens the Add New Lead form, pre-filled with this lead's data
   const openEditModal = (lead) => {
-    setEditLead({ ...lead });
-    setIsEditModalOpen(true);
+    setEditLead(lead);
+    setIsModalOpen(true);
   };
 
-  const handleEditLead = (e) => {
-    e.preventDefault();
+  // Convert any stored follow-up value into a YYYY-MM-DD value for the date input
+  const toDateInputValue = (v) => {
+    if (!v || typeof v !== 'string') return '';
+    const s = v.trim();
+    if (s === 'No Date' || s === 'Pending' || s === '') return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m = s.match(/(\d{2})-(\d{2})-(\d{4})/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+  };
+
+  // Inline follow-up date edit from the table column
+  const updateLeadFollowUp = (id, value) => {
     const formattedTime = getFormattedTimestamp();
     setLeads(leads.map(l => {
-      if (l.id === editLead.id) {
-        const changes = [];
-        if (l.name !== editLead.name) changes.push(`name to "${editLead.name}"`);
-        if (l.phone !== editLead.phone) changes.push(`phone to "${editLead.phone}"`);
-        if (l.projectType !== editLead.projectType) changes.push(`service to "${editLead.projectType}"`);
-        if (l.source !== editLead.source) changes.push(`source to "${editLead.source}"`);
-        if (l.budget !== editLead.budget) changes.push(`budget to "${editLead.budget}"`);
-        if (l.notes !== editLead.notes) changes.push('notes');
-        const newHistory = changes.length
-          ? [...(l.history || []), { timestamp: formattedTime, message: `Updated ${changes.join(', ')}` }]
-          : (l.history || []);
-        const updatedLead = { ...l, ...editLead, history: newHistory };
-        if (selectedLeadForTimeline && selectedLeadForTimeline.id === l.id) {
-          setSelectedLeadForTimeline(updatedLead);
-        }
-        return updatedLead;
+      if (l.id !== id) return l;
+      if (toDateInputValue(l.followUp) === value) return l;
+      const newHistory = [...(l.history || []), {
+        timestamp: formattedTime,
+        message: value ? `Updated follow-up date to: ${value}` : 'Cleared follow-up date'
+      }];
+      const updatedLead = { ...l, followUp: value || 'No Date', history: newHistory };
+      if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) {
+        setSelectedLeadForTimeline(updatedLead);
       }
-      return l;
+      return updatedLead;
     }));
-    setIsEditModalOpen(false);
-    setEditLead(null);
-    addToast('Lead updated successfully!', 'success');
+  };
+
+  // Build the branded TESCO STRUCTURES quotation-style document for a lead
+  // Load html2pdf.js once (used to generate a real downloadable PDF file)
+  const ensureHtml2Pdf = () => new Promise((resolve, reject) => {
+    if (window.html2pdf) return resolve(window.html2pdf);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js';
+    s.onload = () => resolve(window.html2pdf);
+    s.onerror = () => reject(new Error('Failed to load html2pdf.js'));
+    document.head.appendChild(s);
+  });
+
+  // Build the branded Tesco Structures lead document as { quoteNo, style, inner }.
+  // Uses a normal (non-fixed) flow layout so it renders cleanly both as a PDF and in print.
+  const leadDocParts = (lead) => {
+    const w = lead._wizard || {};
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const or = (v, fb) => (v !== undefined && v !== null && String(v).trim() !== '' ? v : fb);
+    // Hide 4 digits of a phone number in the exported PDF for privacy (keeps the last 2
+    // and any leading digits visible; masks 4 digits in the middle-end as X).
+    const maskPhone = (v) => { const s = String(v ?? ''); const d = s.replace(/\D/g, ''); if (d.length < 6) return s; const a = d.length - 6, b = d.length - 2; let n = -1; return s.replace(/\d/g, (c) => { n += 1; return (n >= a && n < b) ? 'X' : c; }); };
+
+    const idNum = (lead.id || '').replace(/\D/g, '') || '0000';
+    const quoteNo = `TS-Q-${idNum}`;
+    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const budgetRaw = or(lead.budget, or(w.projectValue, ''));
+    const budget = budgetRaw ? (String(budgetRaw).trim().startsWith('₹') ? String(budgetRaw) : `₹${budgetRaw}`) : '—';
+
+    const clientName = or(lead.name, 'Client');
+    const company = or(lead.company, clientName);
+    const salesRep = (lead.manager && lead.manager !== 'Unassigned') ? lead.manager : 'Unassigned';
+
+    const dq = String(lead.designReq || '').toLowerCase();
+    const has3d = dq.includes('3d') || dq === 'both';
+    const has2d = dq.includes('2d') || dq === 'both';
+    const designServices = `3D: ${has3d ? 'Yes' : 'No'} | 2D: ${has2d ? 'Yes' : 'No'}`;
+
+    const detailRow = (a, b, c) => `
+      <div class="grid3 drow">
+        <div class="field"><div class="k">${esc(a[0])}</div><div class="v">${esc(a[1])}</div></div>
+        <div class="field"><div class="k">${esc(b[0])}</div><div class="v">${esc(b[1])}</div></div>
+        <div class="field"><div class="k">${esc(c[0])}</div><div class="v">${esc(c[1])}</div></div>
+      </div>`;
+    const milestone = (n, label, pct) => `
+      <div class="mrow"><span>${n}. ${esc(label)}</span><b>${esc(pct)}</b></div>`;
+
+    const style = `<style>
+  @page { size: A4; margin: 0; }
+  .tsdoc, .tsdoc * { box-sizing: border-box; }
+  .tsdoc { font-family: Arial, Helvetica, sans-serif; color: #1F2937; background: #fff; width: 794px; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .tsdoc .hdr { padding: 26px 48px 14px; display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #8DC63F; }
+  .tsdoc .logo-wrap { display: flex; align-items: center; gap: 14px; }
+  .tsdoc .logo-text .t1 { font-size: 22px; letter-spacing: 9px; font-weight: 800; color: #2B2B2B; line-height: 1; }
+  .tsdoc .logo-text .t2 { font-size: 10px; letter-spacing: 6px; color: #6B7280; margin-top: 5px; }
+  .tsdoc .hdr-email { color: #4B5563; font-size: 12px; margin-top: 12px; }
+  .tsdoc .ftr { margin-top: 36px; background: #8DC63F; color: #fff; text-align: center; font-size: 11px; font-weight: 700; padding: 12px 8px; letter-spacing: 0.3px; }
+  .tsdoc .content { padding: 22px 48px 0; }
+  .tsdoc .pagebreak { page-break-before: always; height: 0; }
+  .tsdoc .quotebox { border: 1px solid #E5E9F0; border-radius: 8px; padding: 15px 24px; display: flex; justify-content: space-between; font-size: 13px; color: #4B5563; margin-bottom: 8px; }
+  .tsdoc .quotebox b { color: #111827; }
+  .tsdoc .sec-title { color: #1E3A8A; font-size: 14px; font-weight: 800; letter-spacing: 0.3px; margin: 30px 0 7px; }
+  .tsdoc .sec-rule { height: 2px; background: #E3E8F0; border-radius: 2px; margin-bottom: 20px; }
+  .tsdoc .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .tsdoc .card2 { background: #F6F8FB; border: 1px solid #EBEFF5; border-radius: 10px; padding: 18px 22px; page-break-inside: avoid; }
+  .tsdoc .card2 .lbl { font-size: 10px; letter-spacing: 1px; font-weight: 800; color: #64748B; text-transform: uppercase; margin-bottom: 12px; }
+  .tsdoc .card2 .big { font-size: 16px; font-weight: 800; color: #111827; margin: 0 0 10px; }
+  .tsdoc .card2 .row { font-size: 12.5px; color: #64748B; margin: 3px 0; }
+  .tsdoc .card2 .row b { color: #374151; font-weight: 700; }
+  .tsdoc .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px 26px; }
+  .tsdoc .drow { padding: 14px 0; border-bottom: 1px solid #EEF1F5; }
+  .tsdoc .field .k { font-size: 12px; color: #6B7280; margin-bottom: 5px; }
+  .tsdoc .field .v { font-size: 13px; font-weight: 700; color: #1F2937; }
+  .tsdoc .qtable { border: 1px solid #EBEFF5; border-radius: 10px; overflow: hidden; margin-top: 10px; page-break-inside: avoid; }
+  .tsdoc .qhead { display: flex; justify-content: space-between; background: #F1F4F8; padding: 14px 20px; font-size: 12.5px; font-weight: 800; color: #475569; }
+  .tsdoc .qbody { display: flex; justify-content: space-between; padding: 18px 20px; gap: 20px; }
+  .tsdoc .qbody .desc-t { font-size: 14px; font-weight: 800; color: #111827; margin: 0 0 6px; }
+  .tsdoc .qbody .desc-s { font-size: 11.5px; color: #94A3B8; line-height: 1.5; max-width: 460px; }
+  .tsdoc .qbody .price { font-size: 14px; font-weight: 800; color: #111827; white-space: nowrap; }
+  .tsdoc .qsub { display: flex; justify-content: flex-end; gap: 40px; background: #F6F8FB; padding: 14px 20px; font-size: 13px; color: #64748B; }
+  .tsdoc .qsub b { color: #111827; }
+  .tsdoc .qtotal { display: flex; justify-content: flex-end; gap: 40px; padding: 16px 20px; font-size: 15px; font-weight: 800; color: #0F9D8F; }
+  .tsdoc .mtitle { font-size: 11.5px; font-weight: 800; letter-spacing: 0.6px; color: #334155; text-transform: uppercase; margin: 26px 0 10px; }
+  .tsdoc .mhead { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 800; color: #475569; padding: 8px 4px 12px; border-bottom: 1px solid #E3E8F0; }
+  .tsdoc .mrow { display: flex; justify-content: space-between; font-size: 13px; color: #374151; padding: 14px 4px; border-bottom: 1px dashed #E5E9F0; }
+  .tsdoc .mrow b { color: #111827; }
+  .tsdoc .sign { margin-top: 40px; display: flex; justify-content: flex-end; }
+  .tsdoc .sign .box { border-top: 1px solid #CBD5E1; padding-top: 8px; width: 230px; text-align: center; font-size: 11px; letter-spacing: 1px; color: #94A3B8; }
+</style>`;
+
+    const inner = `<div class="tsdoc">
+  <div class="hdr">
+    <div class="logo-wrap">
+      <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">
+        <g fill="#8DC63F">
+          <polygon points="4,30 15,12 21,12 10,30"/>
+          <polygon points="13,30 24,12 30,12 19,30"/>
+          <polygon points="22,30 33,12 39,12 28,30"/>
+        </g>
+        <rect x="4" y="32" width="30" height="3" fill="#4B7A1E"/>
+      </svg>
+      <div class="logo-text"><div class="t1">TESCO</div><div class="t2">STRUCTURES</div></div>
+    </div>
+    <div class="hdr-email">tescostructures@gmail.com</div>
+  </div>
+  <div class="content">
+    <div class="quotebox">
+      <div><b>Quote No:</b> ${esc(quoteNo)}</div>
+      <div><b>Date:</b> ${esc(today)}</div>
+      <div><b>Validity:</b> 30 Days</div>
+    </div>
+
+    <div class="sec-title">1. BASIC INFO</div>
+    <div class="sec-rule"></div>
+    <div class="cards">
+      <div class="card2">
+        <div class="lbl">Client Details</div>
+        <div class="big">${esc(clientName)}</div>
+        <div class="row">Billing Name: ${esc(company)}</div>
+        <div class="row">GST: ${esc(or(w.gst, '-'))}</div>
+      </div>
+      <div class="card2">
+        <div class="lbl">Contact Info</div>
+        <div class="row"><b>Mobile:</b> ${esc(maskPhone(or(lead.phone, '-')))}</div>
+        <div class="row"><b>Alt Mobile:</b> ${esc(maskPhone(or(w.altPhone, '-')))}</div>
+        <div class="row"><b>Email:</b> ${esc(or(lead.email, '-'))}</div>
+      </div>
+      <div class="card2">
+        <div class="lbl">Location</div>
+        <div class="row"><b>Site Location:</b> ${esc(or(lead.location, '-'))}</div>
+        <div class="row"><b>Site Address:</b> ${esc(or(w.siteAddress, '-'))}</div>
+        <div class="row"><b>Billing Address:</b> ${esc(or(w.billingAddress, 'Same as Site'))}</div>
+      </div>
+      <div class="card2">
+        <div class="lbl">Sales Representative</div>
+        <div class="big">${esc(salesRep)}</div>
+        <div class="row">Tesco Structures Sales Division</div>
+      </div>
+    </div>
+
+    <div class="sec-title">2. PROJECT DETAILS</div>
+    <div class="sec-rule"></div>
+    ${detailRow(
+      ['Segment Category', or(w.service, or(lead.projectType, '-'))],
+      ['Work Type / Segment', or(w.projectType, '-')],
+      ['Structure Type', or(w.structureType, '-')]
+    )}
+    ${detailRow(
+      ['Plot Dimensions', or(w.plotDimensions, '-')],
+      ['Roof Area / Size', w.approximateArea ? `${w.approximateArea} sq.ft` : '-'],
+      ['Heights (Roof/Clearance/Eave)', or(w.heights, '-')]
+    )}
+    ${detailRow(
+      ['Roof Covering Sheeting', or(w.roofCovering, '-')],
+      ['Site Condition / Soil Test', (w.siteCondition || w.soilTest) ? `${or(w.siteCondition, '-')} / ${or(w.soilTest, '-')}` : '-'],
+      ['Insulation Work', or(w.insulation, '-')]
+    )}
+    ${detailRow(
+      ['Site Access (Road/Crane/HV)', or(w.siteAccess, '-')],
+      ['Environment (Sun/Wind/Drain)', or(w.environment, '-')],
+      ['Working Space', or(w.workingSpace, '-')]
+    )}
+
+    <div class="pagebreak"></div>
+
+    <div class="sec-title">3. QUOTATIONS</div>
+    <div class="sec-rule"></div>
+    ${detailRow(
+      ['Design Services', designServices],
+      ['Transportation Scope', or(w.transportation, '-')],
+      ['Scaffolding Scope', or(w.scaffolding, '-')]
+    )}
+    <div class="qtable">
+      <div class="qhead"><span>Description of Work</span><span>Total Price (INR)</span></div>
+      <div class="qbody">
+        <div>
+          <div class="desc-t">Design, Fabrication, Supply, and Erection work charges</div>
+          <div class="desc-s">Charge covers design calculation, raw material sourcing, structural framework columns, rafters, primary/secondary purlins, bracing rods, roofing sheets, fasteners, and site erection.</div>
+        </div>
+        <div class="price">${esc(budget)}</div>
+      </div>
+      <div class="qsub"><span>Subtotal:</span><b>${esc(budget)}</b></div>
+    </div>
+    <div class="qtotal"><span>Grand Total (All-Inclusive):</span><span>${esc(budget)}</span></div>
+
+    <div class="mtitle">Pricing &amp; Payment Milestones Schedule</div>
+    <div class="mhead"><span>Billing Milestone Event Description</span><span>Percentage</span></div>
+    ${milestone(1, 'Advance with Purchase Order (PO)', '10%')}
+    ${milestone(2, 'Dispatch / after Drawing Approval', '30%')}
+    ${milestone(3, 'Erection / after Structure Work Completion', '40%')}
+    ${milestone(4, 'Handover / after Completion Sign-off', '20%')}
+
+    <div class="sec-title">4. ORDER CONFIRM</div>
+    <div class="sec-rule"></div>
+    ${detailRow(
+      ['Order Date', or(w.confirmationDate, '-')],
+      ['Proposal Ref', or(w.proposalRef, '-')],
+      ['Lead Time', or(w.leadTime, '-')]
+    )}
+    ${detailRow(
+      ['Start Date', or(w.expectedStartDate, '-')],
+      ['Completion Date', or(w.completionDate, '-')],
+      ['Salesperson Declaration', or(w.orderStatus, '-')]
+    )}
+    <div class="sign"><div class="box">AUTHORIZED SIGNATURE</div></div>
+  </div>
+  <div class="ftr">www.tescostructures.com&nbsp;&nbsp;|&nbsp;&nbsp;+91 90033 28229&nbsp;&nbsp;|&nbsp;&nbsp;37, 15th St, Gandhi Nagar, Ashok Nagar, Chennai, Tamil Nadu 600083</div>
+</div>`;
+
+    return { quoteNo, style, inner };
+  };
+
+  // Full standalone HTML doc (used for the print fallback)
+  const buildLeadDocHtml = (lead) => {
+    const { quoteNo, style, inner } = leadDocParts(lead);
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${quoteNo} - Tesco Structures</title>${style}</head><body>${inner}<scr` + `ipt>setTimeout(function(){window.print();},400);</scr` + `ipt></body></html>`;
+  };
+
+  // Download a single lead as a real branded PDF file (falls back to print-to-PDF)
+  const downloadLead = async (lead) => {
+    const { quoteNo, style, inner } = leadDocParts(lead);
+    try {
+      const html2pdf = await ensureHtml2Pdf();
+      // Render into an on-screen host (height:0 + overflow hidden → invisible but fully laid
+      // out) and capture the .tsdoc element itself. A far off-screen container can render blank.
+      const host = document.createElement('div');
+      // On-screen (top-left, briefly) at exactly A4 content width so html2canvas captures it
+      // full and html2pdf fits it to the A4 page — no clipping, no oversized page.
+      host.style.cssText = 'position:absolute;left:0;top:0;width:794px;background:#fff;';
+      host.innerHTML = style + inner;
+      document.body.appendChild(host);
+      const target = host.querySelector('.tsdoc') || host;
+      if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch {} }
+      await new Promise((r) => setTimeout(r, 80));
+      await html2pdf().set({
+        margin: 0,
+        filename: `${quoteNo}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] },
+      }).from(target).save();
+      document.body.removeChild(host);
+      addToast('Lead PDF downloaded', 'success');
+    } catch (err) {
+      console.error('PDF download failed, falling back to print:', err);
+      const win = window.open('', '_blank');
+      if (!win) { addToast('Please allow pop-ups to download the lead.', 'warning'); return; }
+      win.document.write(buildLeadDocHtml(lead));
+      win.document.close();
+    }
+  };
+
+  // "Delete" permanently removes the lead. It is deleted from the `leads` collection
+  // AND from the shared `pipelines` collection (whose docs are keyed OP-<lead digits>),
+  // so it does not linger as a "legacy" row in the Sales Pipeline. It is also removed
+  // from local state so the bulk-sync round-trip never re-uploads it to the DB.
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    // Hard-delete the lead record from the backend.
+    fetch(`${API_URL}/${id}`, { method: 'DELETE' })
+      .catch(err => console.error('Failed to delete lead:', err));
+    // Delete the matching pipeline opportunity (id derives as OP-<digits of lead id>).
+    const opId = `OP-${String(id).replace(/\D/g, '') || id}`;
+    fetch(`http://localhost:5000/api/pipeline/${opId}`, { method: 'DELETE' })
+      .catch(err => console.error('Failed to delete pipeline entry:', err));
+    // Drop it from local state so the sync effect posts the reduced set (no resurrect).
+    setLeads(leads.filter(l => l.id !== id));
+    // Clear any legacy localStorage pipeline entry for this lead.
+    try {
+      const extras = JSON.parse(localStorage.getItem('crm_pipeline_extra') || '[]');
+      localStorage.setItem('crm_pipeline_extra', JSON.stringify(extras.filter(o => o.leadId !== id)));
+    } catch (e) { /* storage unavailable */ }
+    if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) setSelectedLeadForTimeline(null);
+    setDeleteTarget(null);
+    addToast('Lead deleted', 'info');
   };
 
   const [isApptModalOpen, setIsApptModalOpen] = useState(false);
@@ -330,6 +620,16 @@ const LeadManagement = () => {
     source: 'All',
     assignTo: 'All'
   });
+
+  // The "All Managers" dropdown (headerFilters.assignTo) scopes every overview count too,
+  // not just the table — selecting a manager shows only that manager's numbers.
+  const selMgr = headerFilters.assignTo;
+  const byMgr = (m) => selMgr === 'All' || (m || 'Unassigned') === selMgr;
+  const overviewLeads = leads.filter(l => byMgr(l.manager));
+  const mgrLeadIds = new Set(overviewLeads.map(l => l.id));
+  const apptFixedCount = apptRecords.filter(a => !/visit/i.test(a.type || '') && byMgr(a.manager)).length;
+  const quotationCount = quoteRecords.filter(q => selMgr === 'All' || mgrLeadIds.has(q.leadId)).length;
+  const orderConfirmedCount = projectRecords.filter(p => selMgr === 'All' || mgrLeadIds.has(p.leadId) || (p.salesperson || '') === selMgr || (p.manager || '') === selMgr).length;
 
   const toggleFilter = (filterName) => {
     if (statusFilter === filterName) {
@@ -381,6 +681,8 @@ const LeadManagement = () => {
         matchesStatus = statusLower.includes('order');
       } else if (statusFilter === 'Junk') {
         matchesStatus = statusLower.includes('junk');
+      } else if (statusFilter === 'Lost') {
+        matchesStatus = statusLower.includes('lost');
       }
       if (!matchesStatus) return false;
     }
@@ -430,6 +732,10 @@ const LeadManagement = () => {
   const updateLeadStatus = (id, newStatus) => {
     const lead = leads.find(l => l.id === id);
     if (!lead || lead.status === newStatus) return;
+
+    // Apply the status change immediately so the overview counts always reflect the pick,
+    // even if the details popup below is closed without submitting.
+    setLeads(prev => prev.map(l => (l.id === id ? { ...l, status: newStatus } : l)));
 
     if (newStatus === 'Appointment Fixed') {
       setActiveApptLeadId(id);
@@ -635,6 +941,25 @@ const LeadManagement = () => {
     }));
   };
 
+  const updateLeadDesignReq = (id, newValue) => {
+    const formattedTime = getFormattedTimestamp();
+    setLeads(leads.map(l => {
+      if (l.id === id) {
+        if ((l.designReq || '') === newValue) return l;
+        const newHistory = [...(l.history || []), {
+          timestamp: formattedTime,
+          message: newValue ? `Updated design requirement to: ${newValue}` : 'Cleared design requirement'
+        }];
+        const updatedLead = { ...l, designReq: newValue, history: newHistory };
+        if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) {
+          setSelectedLeadForTimeline(updatedLead);
+        }
+        return updatedLead;
+      }
+      return l;
+    }));
+  };
+
   const updateLeadSource = (id, newSource) => {
     const formattedTime = getFormattedTimestamp();
     setLeads(leads.map(l => {
@@ -656,8 +981,8 @@ const LeadManagement = () => {
 
   const handleAddLead = (e) => {
     e.preventDefault();
-    const maxIdNum = leads.reduce((max, l) => { const n = parseInt((l.id || '').replace('LD-', ''), 10); return isNaN(n) ? max : Math.max(max, n); }, 1000);
-    const newId = `LD-${maxIdNum + 1}`;
+    const maxIdNum = leads.reduce((max, l) => { const n = parseInt((l.id || '').replace(/\D/g, ''), 10); return isNaN(n) ? max : Math.max(max, n); }, 0);
+    const newId = `LD-${String(maxIdNum + 1).padStart(4, '0')}`;
     const formattedTime = getFormattedTimestamp();
     
     const leadToAdd = {
@@ -674,10 +999,129 @@ const LeadManagement = () => {
 
     setLeads([...leads, leadToAdd]);
     setIsModalOpen(false);
-    setNewLead({ 
+    setNewLead({
       date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      name: '', projectType: '', phone: '', budget: '', source: '', status: 'Lead Received', notes: '' 
+      name: '', projectType: '', phone: '', budget: '', source: '', status: 'Lead Received', notes: ''
     });
+  };
+
+  // Map a wizard status back to the table/lead status value
+  const WIZARD_STATUS_TO_TABLE = {
+    'New': 'New Lead', 'Hot': 'Hot Leads', 'Warm': 'Warm Leads', 'Cold': 'Cold Leads',
+    'Appt. Fixed': 'Appointment Fixed', 'Quotation Send': 'Quotation Send',
+    'Order Confirmed': 'Order Confirmed', 'Junk': 'Junk', 'Lost': 'Lost',
+  };
+
+  // Keep a lead's Sales Pipeline entry in sync. A lead only appears in the
+  // pipeline when it has a Project Value; here we remove its old entry and,
+  // if a value is present, add a fresh one tagged with the lead id.
+  const syncPipelineForLead = (leadId, data) => {
+    let extras = [];
+    try { extras = JSON.parse(localStorage.getItem('crm_pipeline_extra') || '[]'); } catch (e) { extras = []; }
+    // Drop any existing entry for this lead so we never duplicate on edit
+    extras = extras.filter(o => o.leadId !== leadId);
+
+    if (data.budget && String(data.budget).trim() !== '') {
+      const numVal = parseFloat(String(data.budget).replace(/[^\d.]/g, '')) || 0;
+      const maxOpNum = extras.reduce((m, o) => {
+        const n = parseInt(String(o.id).replace(/\D/g, ''), 10);
+        return isNaN(n) ? m : Math.max(m, n);
+      }, 1000);
+      const stageMap = { 'Appt. Fixed': 'Appointment Fixed', 'Quotation Send': 'Warm', 'Order Confirmed': 'Appointment Fixed', 'Junk': 'Cold' };
+      const stage = ['New', 'Hot', 'Warm', 'Cold', 'Lost'].includes(data.status) ? data.status : (stageMap[data.status] || 'New');
+      const fmtDate = (d) => {
+        if (!d || d === 'Pending') return '-';
+        const dt = new Date(d);
+        return isNaN(dt.getTime()) ? '-' : dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      };
+      const opportunity = {
+        id: `OP-${maxOpNum + 1}`,
+        leadId,
+        customer: data.name,
+        service: data.projectType || '-',
+        stage,
+        assignedTo: data.manager || 'Unassigned',
+        expectedClose: fmtDate(data.followUp),
+        value: numVal,
+        lastActivity: 'Today',
+        followUp: (data.followUp && data.followUp !== 'Pending') ? data.followUp : ''
+      };
+      extras = [opportunity, ...extras];
+    }
+    try { localStorage.setItem('crm_pipeline_extra', JSON.stringify(extras)); } catch (e) { /* storage unavailable */ }
+  };
+
+  // Save handler for the multi-step Add New Lead wizard (handles both create and edit)
+  const handleWizardSave = (data) => {
+    const formattedTime = getFormattedTimestamp();
+
+    // ----- EDIT MODE: update the existing lead in place -----
+    if (data._editId) {
+      const id = data._editId;
+      setLeads(leads.map(l => {
+        if (l.id !== id) return l;
+        const updatedLead = {
+          ...l,
+          name: data.name,
+          company: data.company,
+          phone: data.phone,
+          email: data.email,
+          projectType: data.projectType,
+          location: data.location,
+          budget: data.budget,
+          source: data.source,
+          status: WIZARD_STATUS_TO_TABLE[data.status] || l.status,
+          notes: data.notes,
+          manager: data.manager || l.manager || 'Unassigned',
+          followUp: data.followUp || l.followUp || 'Pending',
+          _wizard: data._wizard,
+          history: [...(l.history || []), { timestamp: formattedTime, message: 'Lead details updated via edit form' }]
+        };
+        if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) {
+          setSelectedLeadForTimeline(updatedLead);
+        }
+        return updatedLead;
+      }));
+      syncPipelineForLead(id, data);
+      setEditLead(null);
+      setIsModalOpen(false);
+      addToast('Lead updated successfully!', 'success');
+      return;
+    }
+
+    // ----- CREATE MODE: add a brand-new lead -----
+    const maxIdNum = leads.reduce((max, l) => { const n = parseInt((l.id || '').replace(/\D/g, ''), 10); return isNaN(n) ? max : Math.max(max, n); }, 0);
+    const newId = `LD-${String(maxIdNum + 1).padStart(4, '0')}`;
+
+    const leadToAdd = {
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      id: newId,
+      name: data.name,
+      company: data.company,
+      phone: data.phone,
+      email: data.email,
+      projectType: data.projectType,
+      location: data.location,
+      budget: data.budget,
+      source: data.source,
+      status: WIZARD_STATUS_TO_TABLE[data.status] || data.status,
+      notes: data.notes,
+      type: 'new leads',
+      manager: data.manager || 'Unassigned',
+      followUp: data.followUp || 'Pending',
+      priority: 'Medium',
+      history: [
+        { timestamp: formattedTime, message: `Lead created from ${data.source || 'Manual Form'}` }
+      ]
+    };
+
+    setLeads([...leads, leadToAdd]);
+
+    // If a Project Value was entered on the Quotations step, also add this lead to the Sales Pipeline
+    syncPipelineForLead(newId, data);
+
+    setEditLead(null);
+    setIsModalOpen(false);
   };
 
   return (
@@ -698,309 +1142,197 @@ const LeadManagement = () => {
           to { opacity: 1; }
         }
       `}</style>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '700' }}>Lead Management</h2>
-        
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
-            <input 
-              type="text" 
-              placeholder="Search leads..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                padding: '0.5rem 1rem 0.5rem 2.5rem',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-color)',
-                backgroundColor: 'var(--surface-color)',
-                outline: 'none',
-                width: '250px'
-              }}
-            />
-          </div>
-          <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>Add New Lead</button>
+        <h2 style={{ margin: 0, fontSize: '2rem', fontWeight: '800', color: 'var(--text-main)', letterSpacing: '-0.5px' }}>Lead Management</h2>
+        <button className="btn btn-primary" style={{ padding: '0.7rem 1.4rem', fontSize: '0.9rem', borderRadius: '0.7rem' }} onClick={() => { setEditLead(null); setIsModalOpen(true); }}>Add New Lead</button>
+      </div>
+
+      {/* Filter row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', position: 'relative', zIndex: 40 }}>
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'var(--surface-color)', padding: '0.7rem 1.15rem', borderRadius: '0.65rem', border: '1px solid var(--border-color)', boxShadow: '0 1px 2px rgba(0,0,0,0.04)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-main)', outline: 'none', whiteSpace: 'nowrap' }}
+          >
+            <Calendar size={16} color="var(--primary-color)" />
+            <span>
+              {selectedPreset === 'Custom'
+                ? `${formatDateDisplay(dateRange.start)} - ${formatDateDisplay(dateRange.end)}`
+                : `${selectedPreset}${dateRange.start ? ` (${formatDateDisplay(dateRange.start)} - ${formatDateDisplay(dateRange.end)})` : ''}`}
+            </span>
+            <ChevronRight size={14} style={{ transform: isCalendarOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', opacity: 0.7 }} />
+          </button>
+
+          {isCalendarOpen && (
+            <div style={{ position: 'absolute', top: '52px', left: 0, backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', display: 'flex', zIndex: 100, overflow: 'hidden', minWidth: '460px' }}>
+              <div style={{ width: '160px', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', backgroundColor: '#F8FAFC', padding: '0.5rem 0' }}>
+                {['Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'This Month', 'Custom'].map(preset => (
+                  <button key={preset} type="button" onClick={() => applyPreset(preset)} style={{ padding: '0.6rem 1rem', border: 'none', textAlign: 'left', fontSize: '0.8125rem', fontWeight: selectedPreset === preset ? '600' : '500', color: selectedPreset === preset ? 'var(--primary-color)' : 'var(--text-muted)', backgroundColor: selectedPreset === preset ? '#EEF2FF' : 'transparent', cursor: 'pointer', width: '100%' }}>{preset}</button>
+                ))}
+              </div>
+              <div style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '300px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <button type="button" onClick={prevMonth} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: '4px' }}><ChevronLeft size={16} /></button>
+                  <span style={{ fontSize: '0.875rem', fontWeight: '700', color: 'var(--text-main)', userSelect: 'none' }}>{currentNavDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
+                  <button type="button" onClick={nextMonth} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: '4px' }}><ChevronRight size={16} /></button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '4px' }}>
+                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (<span key={d} style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)' }}>{d}</span>))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                  {getDaysInMonth(currentNavDate).map((day, idx) => {
+                    if (!day) return <div key={`empty-${idx}`}></div>;
+                    const isSel = isSelected(day);
+                    const isInRange = isRange(day);
+                    const isToday = day.toDateString() === new Date().toDateString();
+                    return (
+                      <button key={idx} type="button" onClick={() => handleDayClick(day)} style={{ padding: '0.35rem 0', fontSize: '0.75rem', fontWeight: isSel || isToday ? '700' : '500', border: 'none', borderRadius: '4px', cursor: 'pointer', backgroundColor: isSel ? 'var(--primary-color)' : isInRange ? '#EEF2FF' : 'transparent', color: isSel ? 'white' : isInRange ? 'var(--primary-color)' : isToday ? 'var(--primary-color)' : 'var(--text-main)', boxShadow: isToday && !isSel ? 'inset 0 0 0 1px var(--primary-color)' : 'none' }} title={day.toLocaleDateString()}>{day.getDate()}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ position: 'relative' }}>
+          <select
+            value={headerFilters.assignTo}
+            onChange={(e) => setHeaderFilters({ ...headerFilters, assignTo: e.target.value })}
+            style={{ background: 'var(--surface-color)', padding: '0.7rem 2.4rem 0.7rem 1.15rem', borderRadius: '0.65rem', border: '1px solid var(--border-color)', boxShadow: '0 1px 2px rgba(0,0,0,0.04)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-main)', outline: 'none', appearance: 'none', WebkitAppearance: 'none' }}
+          >
+            <option value="All">All Managers</option>
+            <option value="Unassigned">Unassigned</option>
+            {SALES_TEAM.map((name) => (<option key={name} value={name}>{name}</option>))}
+          </select>
+          <ChevronDown size={16} color="var(--text-muted)" style={{ position: 'absolute', right: '0.9rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+        </div>
+
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
+          <Search size={16} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
+          <input type="text" placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ padding: '0.6rem 1rem 0.6rem 2.5rem', borderRadius: '0.65rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', outline: 'none', width: '240px' }} />
         </div>
       </div>
 
       {/* Overview Section */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
-          <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: '600', color: 'var(--text-main)' }}>Overview</h3>
-          <div style={{ position: 'relative' }}>
-            <button 
-              onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                background: 'var(--surface-color)',
-                padding: '0.6rem 1.25rem',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-color)',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '600',
-                color: 'var(--text-main)',
-                outline: 'none',
-                transition: 'all 0.2s'
-              }}
-            >
-              <Calendar size={16} color="var(--primary-color)" />
-              <span>
-                {selectedPreset === 'Custom' 
-                  ? `${formatDateDisplay(dateRange.start)} - ${formatDateDisplay(dateRange.end)}` 
-                  : `${selectedPreset} (${formatDateDisplay(dateRange.start)} - ${formatDateDisplay(dateRange.end)})`}
-              </span>
-              <ChevronRight size={14} style={{ transform: isCalendarOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', opacity: 0.7 }} />
-            </button>
-
-            {isCalendarOpen && (
-              <div style={{
-                position: 'absolute',
-                top: '48px',
-                right: 0,
-                backgroundColor: 'var(--surface-color)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-lg)',
-                boxShadow: 'var(--shadow-lg)',
-                display: 'flex',
-                zIndex: 100,
-                overflow: 'hidden',
-                minWidth: '460px'
-              }}>
-                {/* Presets Sidebar */}
-                <div style={{
-                  width: '160px',
-                  borderRight: '1px solid var(--border-color)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  backgroundColor: '#F8FAFC',
-                  padding: '0.5rem 0'
-                }}>
-                  {['Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'This Month', 'Custom'].map(preset => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => applyPreset(preset)}
-                      style={{
-                        padding: '0.6rem 1rem',
-                        border: 'none',
-                        background: 'transparent',
-                        textAlign: 'left',
-                        fontSize: '0.8125rem',
-                        fontWeight: selectedPreset === preset ? '600' : '500',
-                        color: selectedPreset === preset ? 'var(--primary-color)' : 'var(--text-muted)',
-                        backgroundColor: selectedPreset === preset ? '#EEF2FF' : 'transparent',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        width: '100%'
-                      }}
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Calendar View Area */}
-                <div style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '300px' }}>
-                  
-                  {/* Header Navigator */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <button 
-                      type="button"
-                      onClick={prevMonth}
-                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: '4px', borderRadius: '4px' }}
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span style={{ fontSize: '0.875rem', fontWeight: '700', color: 'var(--text-main)', userSelect: 'none' }}>
-                      {currentNavDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                    </span>
-                    <button 
-                      type="button"
-                      onClick={nextMonth}
-                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: '4px', borderRadius: '4px' }}
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-
-                  {/* Weekdays Grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '4px' }}>
-                    {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
-                      <span key={d} style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)' }}>{d}</span>
-                    ))}
-                  </div>
-
-                  {/* Days Grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-                    {getDaysInMonth(currentNavDate).map((day, idx) => {
-                      if (!day) return <div key={`empty-${idx}`}></div>;
-                      
-                      const isSel = isSelected(day);
-                      const isInRange = isRange(day);
-                      const isToday = day.toDateString() === new Date().toDateString();
-                      
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => handleDayClick(day)}
-                          style={{
-                            padding: '0.35rem 0',
-                            fontSize: '0.75rem',
-                            fontWeight: isSel || isToday ? '700' : '500',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                            backgroundColor: isSel 
-                              ? 'var(--primary-color)' 
-                              : isInRange 
-                                ? '#EEF2FF' 
-                                : 'transparent',
-                            color: isSel 
-                              ? 'white' 
-                              : isInRange 
-                                ? 'var(--primary-color)' 
-                                : isToday 
-                                  ? 'var(--primary-color)' 
-                                  : 'var(--text-main)',
-                            boxShadow: isToday && !isSel ? 'inset 0 0 0 1px var(--primary-color)' : 'none'
-                          }}
-                          title={day.toLocaleDateString()}
-                        >
-                          {day.getDate()}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: '700', color: 'var(--text-main)' }}>Overview</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
           {/* Row 1 */}
-          <LeadOverviewCard 
-            title="Total Leads" 
-            value={leadsInDateRange.length} 
-            subtitle="All leads in system" 
-            icon={Users} 
-            color="#4F46E5" 
-            bg="#EEF4FF" 
-            borderColor="#C7D2FE" 
+          <LeadOverviewCard
+            title="Total Leads"
+            value={overviewLeads.length}
+            subtitle="All leads in system"
+            icon={Users}
+            color="#4F46E5"
+            bg="#EEF4FF"
+            borderColor="#C7D2FE"
             isSelected={statusFilter === 'All'}
             onClick={() => toggleFilter('All')}
           />
-          <LeadOverviewCard 
-            title="New Leads" 
-            value={leadsInDateRange.filter(l => {
+          <LeadOverviewCard
+            title="New Leads"
+            value={overviewLeads.filter(l => {
               const s = (l.status||'').toLowerCase();
               return s.includes('new') || s.includes('received');
-            }).length} 
-            subtitle="Freshly received" 
-            icon={Sparkles} 
-            color="#0EA5E9" 
-            bg="#F0F9FF" 
-            borderColor="#BAE6FD" 
+            }).length}
+            subtitle="Freshly received"
+            icon={Sparkles}
+            color="#0EA5E9"
+            bg="#F0F9FF"
+            borderColor="#BAE6FD"
             isSelected={statusFilter === 'New'}
             onClick={() => toggleFilter('New')}
           />
-          <LeadOverviewCard 
-            title="Hot Leads" 
-            value={leadsInDateRange.filter(l => (l.status||'').toLowerCase().includes('hot')).length} 
-            subtitle="High conversion chance" 
-            icon={Flame} 
-            color="#E11D48" 
-            bg="#FFF1F2" 
-            borderColor="#FECDD3" 
+          <LeadOverviewCard
+            title="Hot Leads"
+            value={overviewLeads.filter(l => (l.status||'').toLowerCase().includes('hot')).length}
+            subtitle="High conversion chance"
+            icon={Flame}
+            color="#E11D48"
+            bg="#FFF1F2"
+            borderColor="#FECDD3"
             isSelected={statusFilter === 'Hot'}
             onClick={() => toggleFilter('Hot')}
           />
-          <LeadOverviewCard 
-            title="Warm Leads" 
-            value={leadsInDateRange.filter(l => (l.status||'').toLowerCase().includes('warm')).length} 
-            subtitle="Nurturing in progress" 
-            icon={Thermometer} 
-            color="#F97316" 
-            bg="#FFF7ED" 
-            borderColor="#FED7AA" 
+          <LeadOverviewCard
+            title="Warm Leads"
+            value={overviewLeads.filter(l => (l.status||'').toLowerCase().includes('warm')).length}
+            subtitle="Nurturing in progress"
+            icon={Thermometer}
+            color="#F97316"
+            bg="#FFF7ED"
+            borderColor="#FED7AA"
             isSelected={statusFilter === 'Warm'}
             onClick={() => toggleFilter('Warm')}
           />
-          <LeadOverviewCard 
-            title="Cold Leads" 
-            value={leadsInDateRange.filter(l => (l.status||'').toLowerCase().includes('cold')).length} 
-            subtitle="Need re-engagement" 
-            icon={Snowflake} 
-            color="#64748B" 
-            bg="#F8FAFC" 
-            borderColor="#CBD5E1" 
+          <LeadOverviewCard
+            title="Cold Leads"
+            value={overviewLeads.filter(l => (l.status||'').toLowerCase().includes('cold')).length}
+            subtitle="Need re-engagement"
+            icon={Snowflake}
+            color="#64748B"
+            bg="#F8FAFC"
+            borderColor="#CBD5E1"
             isSelected={statusFilter === 'Cold'}
             onClick={() => toggleFilter('Cold')}
           />
           {/* Row 2 */}
-          <LeadOverviewCard 
-            title="Appt. Fixed" 
-            value={leadsInDateRange.filter(l => {
-              const s = (l.status||'').toLowerCase();
-              return s.includes('appointment') || s.includes('appt');
-            }).length} 
-            subtitle="Meetings scheduled" 
-            icon={CalendarCheck} 
-            color="#22C55E" 
-            bg="#ECFDF5" 
-            borderColor="#BBF7D0" 
+          <LeadOverviewCard
+            title="Appt. Fixed"
+            value={apptFixedCount}
+            subtitle="Meetings scheduled"
+            icon={CalendarCheck}
+            color="#22C55E"
+            bg="#ECFDF5"
+            borderColor="#BBF7D0"
             isSelected={statusFilter === 'Appt. Fixed'}
             onClick={() => toggleFilter('Appt. Fixed')}
           />
-          <LeadOverviewCard 
-            title="Quotation Send" 
-            value={leadsInDateRange.filter(l => (l.status||'').toLowerCase().includes('quot')).length} 
-            subtitle="Awaiting response" 
-            icon={FileText} 
-            color="#8B5CF6" 
-            bg="#F5F3FF" 
-            borderColor="#DDD6FE" 
+          <LeadOverviewCard
+            title="Quotation Send"
+            value={quotationCount}
+            subtitle="Awaiting response"
+            icon={FileText}
+            color="#8B5CF6"
+            bg="#F5F3FF"
+            borderColor="#DDD6FE"
             isSelected={statusFilter === 'Quotation Send'}
             onClick={() => toggleFilter('Quotation Send')}
           />
-          <LeadOverviewCard 
-            title="Negotiation" 
-            value={leadsInDateRange.filter(l => (l.status||'').toLowerCase().includes('negot')).length} 
-            subtitle="In discussion" 
-            icon={FileSignature} 
-            color="#D97706" 
-            bg="#FFFBEB" 
-            borderColor="#FDE68A" 
-            isSelected={statusFilter === 'Negotiation'}
-            onClick={() => toggleFilter('Negotiation')}
-          />
-          <LeadOverviewCard 
-            title="Order Confirmed" 
-            value={leadsInDateRange.filter(l => (l.status||'').toLowerCase().includes('order')).length} 
-            subtitle="Successfully closed" 
-            icon={CheckCircle2} 
-            color="#16A34A" 
-            bg="#DCFCE7" 
-            borderColor="#86EFAC" 
+          <LeadOverviewCard
+            title="Order Confirmed"
+            value={orderConfirmedCount}
+            subtitle="Successfully closed"
+            icon={CheckCircle2}
+            color="#16A34A"
+            bg="#DCFCE7"
+            borderColor="#86EFAC"
             isSelected={statusFilter === 'Order Confirmed'}
             onClick={() => toggleFilter('Order Confirmed')}
           />
-          <LeadOverviewCard 
-            title="Junk" 
-            value={leadsInDateRange.filter(l => (l.status||'').toLowerCase().includes('junk')).length} 
-            subtitle="Unqualified leads" 
-            icon={Trash2} 
-            color="#94A3B8" 
-            bg="#F1F5F9" 
-            borderColor="#E2E8F0" 
+          <LeadOverviewCard
+            title="Junk"
+            value={overviewLeads.filter(l => (l.status||'').toLowerCase().includes('junk')).length}
+            subtitle="Unqualified leads"
+            icon={Trash2}
+            color="#94A3B8"
+            bg="#F1F5F9"
+            borderColor="#E2E8F0"
             isSelected={statusFilter === 'Junk'}
             onClick={() => toggleFilter('Junk')}
+          />
+          <LeadOverviewCard
+            title="Lost"
+            value={overviewLeads.filter(l => (l.status||'').toLowerCase().includes('lost')).length}
+            subtitle="Unconverted leads"
+            icon={XCircle}
+            color="#EF4444"
+            bg="#FEF2F2"
+            borderColor="#FECACA"
+            isSelected={statusFilter === 'Lost'}
+            onClick={() => toggleFilter('Lost')}
           />
         </div>
       </div>
@@ -1013,6 +1345,8 @@ const LeadManagement = () => {
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Date</th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Lead ID</th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Customer Name</th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Work Type</th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Project Location</th>
                  <th style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
                   <select
                     value={headerFilters.services}
@@ -1042,6 +1376,7 @@ const LeadManagement = () => {
                     <option value="Other roofing" style={{ color: 'var(--text-main)' }}>OTHER ROOFING</option>
                   </select>
                 </th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Project Value</th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Phone Number</th>
                  <th style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
                   <select
@@ -1102,11 +1437,12 @@ const LeadManagement = () => {
                     <option value="Cold" style={{ color: 'var(--text-main)' }}>COLD</option>
                     <option value="Appt. Fixed" style={{ color: 'var(--text-main)' }}>APPT FIXED</option>
                     <option value="Quotation Send" style={{ color: 'var(--text-main)' }}>QUOTATION SEND</option>
-                    <option value="Negotiation" style={{ color: 'var(--text-main)' }}>NEGOTIATION</option>
                     <option value="Order Confirmed" style={{ color: 'var(--text-main)' }}>ORDER CONFIRMED</option>
                     <option value="Junk" style={{ color: 'var(--text-main)' }}>JUNK</option>
+                    <option value="Lost" style={{ color: 'var(--text-main)' }}>LOST</option>
                   </select>
                 </th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Design Req</th>
                  <th style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
                   <select
                     value={headerFilters.assignTo}
@@ -1145,22 +1481,22 @@ const LeadManagement = () => {
           <tbody>
             {filteredLeads.map((lead, index) => (
               <React.Fragment key={lead.id}>
-              <tr 
+              <tr
                 onClick={() => setSelectedLeadForTimeline(lead)}
                 className="lead-row"
-                style={{ 
+                style={{
                   borderBottom: index === leads.length - 1 ? 'none' : '1px solid var(--border-color)',
                   cursor: 'pointer'
                 }}
               >
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.date}</td>
-                <td 
-                  style={{ 
-                    padding: '0.75rem 1rem', 
-                    fontSize: '0.8125rem', 
-                    fontWeight: '600', 
-                    color: 'var(--secondary-color)', 
-                    textAlign: 'center', 
+                <td
+                  style={{
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.8125rem',
+                    fontWeight: '600',
+                    color: 'var(--secondary-color)',
+                    textAlign: 'center',
                     whiteSpace: 'nowrap'
                   }}
                   title="Lead ID"
@@ -1168,13 +1504,16 @@ const LeadManagement = () => {
                   {lead.id}
                 </td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.name}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.workType || '-'}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.location || '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-main)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.projectType}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-main)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.budget || '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.phone}</td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: getSourceStyles(lead.source).bg, borderRadius: '9999px', padding: '0.2rem 0.1rem 0.2rem 0.6rem' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: getSourceStyles(lead.source).dot, flexShrink: 0 }} />
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: getSourceStyles(canonSource(lead.source)).bg, borderRadius: '9999px', padding: '0.2rem 0.1rem 0.2rem 0.6rem' }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: getSourceStyles(canonSource(lead.source)).dot, flexShrink: 0 }} />
                     <select
-                      value={lead.source}
+                      value={canonSource(lead.source)}
                       onChange={(e) => updateLeadSource(lead.id, e.target.value)}
                       style={{
                         border: 'none',
@@ -1182,14 +1521,14 @@ const LeadManagement = () => {
                         outline: 'none',
                         fontSize: '0.72rem',
                         fontWeight: '700',
-                        color: getSourceStyles(lead.source).color,
+                        color: getSourceStyles(canonSource(lead.source)).color,
                         cursor: 'pointer',
                         textTransform: 'uppercase',
                         letterSpacing: '0.4px',
                         paddingRight: '1.2rem',
                         appearance: 'none',
                         WebkitAppearance: 'none',
-                        backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23${getSourceStyles(lead.source).color.replace('#', '')}%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")`,
+                        backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23${getSourceStyles(canonSource(lead.source)).color.replace('#', '')}%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")`,
                         backgroundRepeat: 'no-repeat',
                         backgroundPosition: 'right 0.25rem center',
                         backgroundSize: '0.55rem auto',
@@ -1202,8 +1541,8 @@ const LeadManagement = () => {
                   </div>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                  <select 
-                    value={lead.status}
+                  <select
+                    value={canonStatus(lead.status)}
                     onChange={(e) => updateLeadStatus(lead.id, e.target.value)}
                     style={{
                       padding: '0.25rem 1.5rem 0.25rem 0.75rem',
@@ -1213,13 +1552,13 @@ const LeadManagement = () => {
                       fontWeight: '700',
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
-                      backgroundColor: getStatusStyles(lead.status).bg,
-                      color: getStatusStyles(lead.status).color,
+                      backgroundColor: getStatusStyles(canonStatus(lead.status)).bg,
+                      color: getStatusStyles(canonStatus(lead.status)).color,
                       cursor: 'pointer',
                       outline: 'none',
                       appearance: 'none',
                       WebkitAppearance: 'none',
-                      backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23${getStatusStyles(lead.status).color.replace('#', '')}%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")`,
+                      backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23${getStatusStyles(canonStatus(lead.status)).color.replace('#', '')}%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")`,
                       backgroundRepeat: 'no-repeat',
                       backgroundPosition: 'right 0.5rem center',
                       backgroundSize: '0.65rem auto'
@@ -1231,13 +1570,34 @@ const LeadManagement = () => {
                     <option value="Cold Leads">COLD</option>
                     <option value="Appointment Fixed">APPT FIXED</option>
                     <option value="Quotation Send">QUOTATION SEND</option>
-                    <option value="Negotiation">NEGOTIATION</option>
                     <option value="Order Confirmed">ORDER CONFIRMED</option>
                     <option value="Junk">JUNK</option>
+                    <option value="Lost">LOST</option>
                   </select>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                  <select 
+                  <select
+                    value={lead.designReq || ''}
+                    onChange={(e) => updateLeadDesignReq(lead.id, e.target.value)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '4px',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '0.8125rem',
+                      backgroundColor: 'var(--surface-color)',
+                      color: lead.designReq ? 'var(--text-main)' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="">Select</option>
+                    <option value="2D Design">2D Design</option>
+                    <option value="3D Design">3D Design</option>
+                    <option value="Both">Both</option>
+                  </select>
+                </td>
+                <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                  <select
                     value={lead.manager}
                     onChange={(e) => updateLeadManager(lead.id, e.target.value)}
                     style={{
@@ -1257,22 +1617,39 @@ const LeadManagement = () => {
                     ))}
                   </select>
                 </td>
-                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.followUp}</td>
+                <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="date"
+                    value={toDateInputValue(lead.followUp)}
+                    onChange={(e) => updateLeadFollowUp(lead.id, e.target.value)}
+                    style={{
+                      padding: '0.35rem 0.5rem',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md, 6px)',
+                      fontSize: '0.8125rem',
+                      color: 'var(--text-main)',
+                      background: 'var(--surface-color)',
+                      outline: 'none',
+                      fontFamily: 'inherit',
+                      cursor: 'pointer'
+                    }}
+                  />
+                </td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
-                    <button 
-                      title="Timeline & Notes" 
+                    <button
+                      title="Timeline & Notes"
                       onClick={(e) => { e.stopPropagation(); setSelectedLeadForTimeline(lead); }}
-                      style={{ 
-                        background: 'var(--primary-color)', 
-                        border: 'none', 
-                        color: 'white', 
-                        width: '28px', 
-                        height: '28px', 
-                        borderRadius: '50%', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
+                      style={{
+                        background: 'var(--primary-color)',
+                        border: 'none',
+                        color: 'white',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         cursor: 'pointer',
                         transition: 'transform 0.15s ease'
                       }}
@@ -1284,7 +1661,10 @@ const LeadManagement = () => {
                     <button title="Edit" onClick={() => openEditModal(lead)} style={{ background: '#E0E7FF', border: 'none', color: 'var(--primary-color)', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                       <Edit2 size={12} />
                     </button>
-                    <button title="Delete" onClick={() => { fetch(`${API_URL}/${lead.id}`, { method: 'DELETE' }).catch(err => console.error('Failed to delete lead:', err)); setLeads(leads.filter(l => l.id !== lead.id)); }} style={{ background: '#FEE2E2', border: 'none', color: 'var(--danger-color, #991B1B)', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <button title="Download" onClick={(e) => { e.stopPropagation(); downloadLead(lead); }} style={{ background: '#DCFCE7', border: 'none', color: '#166534', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                      <Download size={12} />
+                    </button>
+                    <button title="Delete" onClick={() => setDeleteTarget(lead)} style={{ background: '#FEE2E2', border: 'none', color: 'var(--danger-color, #991B1B)', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                       <Trash2 size={12} />
                     </button>
                   </div>
@@ -1301,7 +1681,7 @@ const LeadManagement = () => {
                       style={{ width: '100%', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--primary-color)', outline: 'none', fontSize: '0.8125rem' }}
                     />
                   ) : (
-                    <div 
+                    <div
                       onClick={() => { setEditingNoteId(lead.id); setEditingNoteText(lead.notes || ''); }}
                       title="Click to edit notes"
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}
@@ -1320,121 +1700,36 @@ const LeadManagement = () => {
         </div>
       </div>
 
-      {/* Add New Lead Modal */}
-      {isModalOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Add New Lead</h3>
-              <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleAddLead} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Customer Name</label>
-                <input required value={newLead.name} onChange={(e) => setNewLead({...newLead, name: e.target.value})} type="text" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Services</label>
-                  <select required value={newLead.projectType} onChange={(e) => setNewLead({...newLead, projectType: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', outline: 'none' }}>
-                    <option value="">Select type</option>
-                    <option value="PEB">PEB</option>
-                    <option value="Tensile">Tensile</option>
-                    <option value="Other roofing">Other roofing</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Phone Number</label>
-                  <input required value={newLead.phone} onChange={(e) => setNewLead({...newLead, phone: e.target.value})} type="text" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Lead Source</label>
-                   <select required value={newLead.source} onChange={(e) => setNewLead({...newLead, source: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                     <option value="">Select source</option>
-                     {LEAD_SOURCES.map(src => (
-                       <option key={src} value={src}>{src}</option>
-                     ))}
-                   </select>
-                </div>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Notes</label>
-                <textarea rows="3" value={newLead.notes} onChange={(e) => setNewLead({...newLead, notes: e.target.value})} placeholder="Any additional context..." style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', resize: 'vertical' }}></textarea>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-outline">Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={!newLead.name || !newLead.projectType || !newLead.phone || !newLead.source} style={{ opacity: (!newLead.name || !newLead.projectType || !newLead.phone || !newLead.source) ? 0.5 : 1 }}>Save Lead</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Add New Lead / Edit Lead Wizard */}
+      <AddLeadWizard
+        isOpen={isModalOpen}
+        editLead={editLead}
+        onClose={() => { setIsModalOpen(false); setEditLead(null); }}
+        onSave={handleWizardSave}
+      />
 
-      {isEditModalOpen && editLead && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Edit Lead</h3>
-              <button onClick={() => { setIsEditModalOpen(false); setEditLead(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={20} />
-              </button>
+      {/* Delete confirmation popup */}
+      {deleteTarget && (
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            backgroundColor: 'rgba(15,23,42,0.55)', zIndex: 300,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem'
+          }}
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', padding: '1.75rem', textAlign: 'center' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+              <Trash2 size={24} color="#DC2626" />
             </div>
-            <form onSubmit={handleEditLead} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Customer Name</label>
-                <input required value={editLead.name} onChange={(e) => setEditLead({...editLead, name: e.target.value})} type="text" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Services</label>
-                  <select required value={editLead.projectType} onChange={(e) => setEditLead({...editLead, projectType: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', outline: 'none' }}>
-                    <option value="">Select type</option>
-                    <option value="PEB">PEB</option>
-                    <option value="Tensile">Tensile</option>
-                    <option value="Other roofing">Other roofing</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Phone Number</label>
-                  <input required value={editLead.phone} onChange={(e) => setEditLead({...editLead, phone: e.target.value})} type="text" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Lead Source</label>
-                   <select required value={editLead.source} onChange={(e) => setEditLead({...editLead, source: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                     <option value="">Select source</option>
-                     {LEAD_SOURCES.map(src => (
-                       <option key={src} value={src}>{src}</option>
-                     ))}
-                   </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Budget</label>
-                  <input value={editLead.budget || ''} onChange={(e) => setEditLead({...editLead, budget: e.target.value})} type="text" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
-                </div>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Notes</label>
-                <textarea rows="3" value={editLead.notes || ''} onChange={(e) => setEditLead({...editLead, notes: e.target.value})} placeholder="Any additional context..." style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', resize: 'vertical' }}></textarea>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
-                <button type="button" onClick={() => { setIsEditModalOpen(false); setEditLead(null); }} className="btn btn-outline">Cancel</button>
-                <button type="submit" className="btn btn-primary">Update Lead</button>
-              </div>
-            </form>
+            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem', fontWeight: 700 }}>Delete this lead?</h3>
+            <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+              <strong>{deleteTarget.name || deleteTarget.id}</strong> will be permanently deleted from the database and removed from the Sales Pipeline. This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button className="btn btn-outline" onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button className="btn" onClick={confirmDelete} style={{ background: '#DC2626', color: '#fff', border: 'none' }}>Delete Permanently</button>
+            </div>
           </div>
         </div>
       )}

@@ -13,11 +13,18 @@ export const clearSession = () => {
   localStorage.removeItem('crm_token');
   localStorage.removeItem('crm_user');
   localStorage.removeItem('crm_authenticated');
+  localStorage.removeItem('crm_profile');
 };
 
+// The login flow rewrites `crm_user` on every sign-in, which would wipe out any
+// profile edits made in Settings. `crm_profile` is a dedicated override that the
+// login flow never touches, so a name/email changed in Settings sticks for good.
 export const getUser = () => {
   try {
-    return JSON.parse(localStorage.getItem('crm_user'));
+    const base = JSON.parse(localStorage.getItem('crm_user') || 'null');
+    const override = JSON.parse(localStorage.getItem('crm_profile') || 'null');
+    if (!base && !override) return null;
+    return { ...(base || {}), ...(override || {}) };
   } catch {
     return null;
   }

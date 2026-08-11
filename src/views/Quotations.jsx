@@ -20,6 +20,7 @@ const getApprovalStatusStyle = (status) => {
   };
 
   if (status === 'Approved') return { ...base, backgroundColor: '#DCFCE7', color: '#166534' };
+  if (status === 'Rejected') return { ...base, backgroundColor: '#FEE2E2', color: '#991B1B' };
   return { ...base, backgroundColor: '#FEF3C7', color: '#92400E' }; // Pending
 };
 
@@ -46,11 +47,36 @@ const getQuotationStatusStyle = (status) => {
 
 const QUOTES_API = 'http://localhost:5000/api/quotations';
 
+// Highest numeric suffix across the given quotations (base 5000 so the first id is QT-5001).
+const maxQuoteNum = (rows) => rows.reduce((m, q) => {
+  const n = parseInt(String(q.id || '').replace(/\D/g, ''), 10);
+  return isNaN(n) ? m : Math.max(m, n);
+}, 5000);
+
+// The next guaranteed-unique quotation id. Length-based ids (QT-5001 + length) collide
+// after a delete or against pre-existing quotes, which made two rows share an id — so
+// changing one row's status changed the other. Deriving from the max suffix avoids that.
+const nextQuoteId = (rows) => `QT-${maxQuoteNum(rows) + 1}`;
+
+// Repair any duplicate / missing ids already present in the data so each row is unique
+// (older data may contain collisions created by the previous length-based id scheme).
+const dedupeIds = (rows) => {
+  const seen = new Set();
+  let maxNum = maxQuoteNum(rows);
+  return rows.map((q) => {
+    let id = q.id;
+    if (!id || seen.has(id)) { maxNum += 1; id = `QT-${maxNum}`; }
+    seen.add(id);
+    return id === q.id ? q : { ...q, id };
+  });
+};
+
 const Quotations = () => {
   const addToast = useToast();
   const [quotes, setQuotes] = useState([]);
   const [quotesLoaded, setQuotesLoaded] = useState(false);
   const [leads, setLeads] = useState([]);
+  const [appts, setAppts] = useState([]); // appointments/visits — used to gate the Lead dropdown
 
   // Load all leads so the Generate Quotation form can offer a Lead ID dropdown
   useEffect(() => {
@@ -60,13 +86,22 @@ const Quotations = () => {
       .catch((e) => console.error('Failed to load leads:', e));
   }, []);
 
+  // Load appointments/visits so we can offer only leads whose VISIT is completed
+  // (strict lifecycle: Visit must be completed before a quotation can be uploaded).
+  useEffect(() => {
+    fetch('http://localhost:5000/api/appointments')
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setAppts(d); })
+      .catch((e) => console.error('Failed to load appointments:', e));
+  }, []);
+
   // Load quotations from API (no reference/seed data)
   useEffect(() => {
     const load = async () => {
       try {
         const res = await fetch(QUOTES_API);
         const data = await res.json();
-        if (Array.isArray(data)) setQuotes(data);
+        if (Array.isArray(data)) setQuotes(dedupeIds(data));
       } catch (err) {
         console.error('Failed to load quotations:', err);
       } finally {
@@ -86,24 +121,105 @@ const Quotations = () => {
       body: JSON.stringify(quotes)
     }).catch(err => console.error('Failed to sync quotations:', err));
   }, [quotes, quotesLoaded]);
+
+  // ── Lifecycle: when a quotation is APPROVED, advance its lead to the Order
+  // Confirmation stage (leads PUT). Idempotent — only fires when the lead is not
+  // already at/after that stage, so it neither loops nor spams the API.
+  useEffect(() => {
+    if (!quotesLoaded || leads.length === 0) return;
+    const approvedLeadIds = Array.from(new Set(
+      quotes.filter(q => q.approvalStatus === 'Approved' && q.leadId).map(q => q.leadId)
+    ));
+    approvedLeadIds.forEach((leadId) => {
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) return;
+      if (/order confirm|payment collection|completed/i.test(String(lead.status || ''))) return;
+      const stamp = new Date().toLocaleDateString('en-GB') + ', ' + new Date().toLocaleTimeString('en-US', { hour12: false });
+      const entry = { timestamp: stamp, message: 'Quotation approved — moved to Order Confirmation stage', remark: '' };
+      const history = Array.isArray(lead.history) ? [...lead.history, entry] : [entry];
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: 'Order Confirmed', history } : l));
+      fetch(`http://localhost:5000/api/leads/${leadId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Order Confirmed', history })
+      }).catch(err => console.error('Failed to advance lead to Order Confirmation:', err));
+    });
+  }, [quotes, quotesLoaded, leads]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newQuote, setNewQuote] = useState({
-    leadId: '', client: '', project: '', amount: '', gst: '', approvalStatus: 'Pending', quotationStatus: 'In Preparation', revision: 'Rev 0', fileName: null
+    leadId: '', client: '', project: '', amount: '', gst: '', quotationType: 'Initial Quotation', approvalStatus: 'Pending', quotationStatus: 'In Preparation', revision: 'Rev 0', fileName: null, fileData: null
   });
+
+  // Read the chosen PDF into the new-quote state (attached on Upload)
+  const handleModalFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) { setNewQuote(prev => ({ ...prev, fileName: null, fileData: null })); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const tooBig = file.size > 5 * 1024 * 1024;
+      setNewQuote(prev => ({ ...prev, fileName: file.name, fileData: tooBig ? null : reader.result }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /* ── Lifecycle gating (Visit completed → Quotation) ──
+     A lead is eligible for a new quotation only when it has a COMPLETED visit and does
+     not already have an ACTIVE quotation. "Active" = Pending or Approved. A Rejected
+     quotation does not block re-upload, and all rejected quotations are kept for audit. */
+  const isVisitDone = (a) => {
+    const s = String(a.status || '').toLowerCase();
+    return s.includes('complet') || String(a.progressStatus || '').toLowerCase() === 'completed' || !!a.completedAt;
+  };
+  const digits = (s) => String(s || '').replace(/\D/g, '');
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  // Resolve the lead a completed appointment/visit record belongs to (id → phone → name),
+  // falling back to a lightweight lead built from the record when the lead isn't loaded.
+  const resolveLead = (a) => {
+    if (a.leadId) { const byId = leads.find(l => l.id === a.leadId); if (byId) return byId; }
+    const ap = digits(a.phone);
+    if (ap) { const byPhone = leads.find(l => { const lp = digits(l.phone); return lp && lp.slice(-10) === ap.slice(-10); }); if (byPhone) return byPhone; }
+    const nm = norm(a.client || a.customerName || a.title);
+    const byName = nm ? leads.find(l => norm(l.name) === nm) : null;
+    if (byName) return byName;
+    return a.leadId ? { id: a.leadId, name: a.client || a.customerName || a.title || 'Customer', phone: a.phone || '' } : null;
+  };
+  // Completed records — Site Visits AND coordinator-assigned appointments completed by the
+  // manager in the Visit section. Eligibility is keyed off the RECORDS so a completed visit
+  // surfaces even when its lead's fields don't line up perfectly.
+  const completedRecords = (Array.isArray(appts) ? appts : []).filter(a => isVisitDone(a));
+  // The lead's active (non-rejected) quotation, if any — its existence blocks a new upload.
+  const leadActiveQuote = (leadId) => quotes.find(q => q.leadId === leadId && String(q.approvalStatus || '') !== 'Rejected');
+  const eligibleMap = new Map();
+  completedRecords.forEach(a => { const l = resolveLead(a); if (!l || !l.id || leadActiveQuote(l.id) || eligibleMap.has(l.id)) return; eligibleMap.set(l.id, l); });
+  const eligibleLeads = Array.from(eligibleMap.values());
+  const leadHasCompletedVisit = (leadOrId) => {
+    const id = typeof leadOrId === 'object' && leadOrId !== null ? leadOrId.id : leadOrId;
+    return completedRecords.some(a => { const l = resolveLead(a); return l && l.id === id; });
+  };
 
   const handleGenerateQuote = (e) => {
     e.preventDefault();
-    const newId = `QT-${5001 + quotes.length}`;
-    
-    // Ensure amount and gst have ₹ symbol
+    // ── Enforce the strict lifecycle before uploading ──
+    if (!leadHasCompletedVisit(newQuote.leadId)) {
+      addToast('This lead has no completed visit yet — complete the site visit first.', 'error');
+      return;
+    }
+    const active = leadActiveQuote(newQuote.leadId);
+    if (active) {
+      addToast(`This lead already has a ${String(active.approvalStatus).toLowerCase()} quotation (${active.id}). A new one is allowed only after it is rejected.`, 'error');
+      return;
+    }
+    const newId = nextQuoteId(quotes);
+
+    // Ensure the project value carries a ₹ symbol; keep GST empty when not provided
     const formattedAmount = newQuote.amount.startsWith('₹') ? newQuote.amount : `₹${newQuote.amount}`;
-    const formattedGst = newQuote.gst.startsWith('₹') ? newQuote.gst : `₹${newQuote.gst}`;
-    
+    const formattedGst = newQuote.gst ? (newQuote.gst.startsWith('₹') ? newQuote.gst : `₹${newQuote.gst}`) : '';
+
     setQuotes([...quotes, {
       ...newQuote,
       id: newId,
       amount: formattedAmount,
-      gst: formattedGst
+      gst: formattedGst,
+      // A file attached at upload time means the quotation is prepared
+      quotationStatus: newQuote.fileName ? 'Prepared' : newQuote.quotationStatus
     }]);
 
     // Record the quotation on the lead's shared history (visible to manager + coordinator)
@@ -120,7 +236,8 @@ const Quotations = () => {
     }
 
     setIsModalOpen(false);
-    setNewQuote({ leadId: '', client: '', project: '', amount: '', gst: '', approvalStatus: 'Pending', quotationStatus: 'In Preparation', revision: 'Rev 0', fileName: null });
+    setNewQuote({ leadId: '', client: '', project: '', amount: '', gst: '', quotationType: 'Initial Quotation', approvalStatus: 'Pending', quotationStatus: 'In Preparation', revision: 'Rev 0', fileName: null, fileData: null });
+    addToast('Quotation uploaded successfully!', 'success');
   };
 
   const handleApprovalStatusChange = (id, newStatus) => {
@@ -207,6 +324,7 @@ const Quotations = () => {
     win.document.close();
   };
   // Preview/Download show the actual uploaded document when one exists; otherwise the generated quotation.
+  // View shows ONLY the actual uploaded document (no system-generated fallback).
   const handlePreview = (q) => {
     if (q.fileData) {
       const w = window.open('', '_blank');
@@ -215,8 +333,9 @@ const Quotations = () => {
       w.document.close();
       return;
     }
-    openQuotationDoc(q, false);
+    addToast(q.fileName ? `"${q.fileName}" isn't available to preview — please re-upload the file.` : 'No file has been uploaded for this quotation yet.', 'warning');
   };
+  // Download gives back exactly the uploaded file (no system-generated fallback).
   const handleExportPdf = (q) => {
     if (q.fileData) {
       const a = document.createElement('a');
@@ -225,7 +344,7 @@ const Quotations = () => {
       document.body.appendChild(a); a.click(); a.remove();
       return;
     }
-    openQuotationDoc(q, true);
+    addToast(q.fileName ? `"${q.fileName}" isn't available to download — please re-upload the file.` : 'No file has been uploaded for this quotation yet.', 'warning');
   };
   const handleDeleteQuote = (id) => {
     const q = quotes.find(x => x.id === id);
@@ -247,7 +366,7 @@ const Quotations = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '700' }}>Quotations</h2>
         <button className="btn btn-primary" style={{ display: 'flex', gap: '0.5rem' }} onClick={() => setIsModalOpen(true)}>
-          <Plus size={16} /> Generate Quotation
+          <Plus size={16} /> Upload Quotation
         </button>
       </div>
 
@@ -289,7 +408,11 @@ const Quotations = () => {
               </tr>
             </thead>
             <tbody>
-              {quotes.map((quote, index) => (
+              {quotes.map((quote, index) => {
+                // An APPROVED quotation is permanently locked: no status change, no
+                // file upload/removal, no delete — the lead has moved to Order Confirmation.
+                const isApproved = quote.approvalStatus === 'Approved';
+                return (
                 <tr key={quote.id} style={{ borderBottom: index === quotes.length - 1 ? 'none' : '1px solid var(--border-color)' }}>
                   {/* Lead ID Column */}
                   <td style={{ padding: '1rem 1.5rem', fontSize: '0.875rem', fontWeight: '600', color: 'var(--primary-color)' }}>
@@ -314,11 +437,16 @@ const Quotations = () => {
                       display: 'inline-flex',
                       alignItems: 'center',
                       textAlign: 'center',
-                      backgroundColor: quote.approvalStatus === 'Approved' ? '#DCFCE7' : '#FEF3C7',
-                      color: quote.approvalStatus === 'Approved' ? '#166534' : '#92400E'
+                      backgroundColor: quote.approvalStatus === 'Approved' ? '#DCFCE7' : quote.approvalStatus === 'Rejected' ? '#FEE2E2' : '#FEF3C7',
+                      color: quote.approvalStatus === 'Approved' ? '#166534' : quote.approvalStatus === 'Rejected' ? '#991B1B' : '#92400E'
                     }}>
                       {quote.approvalStatus}
                     </span>
+                    {(quote.approvalStatus === 'Rejected' || quote.approvalStatus === 'Changes Requested') && quote.rejectionReason && (
+                      <div style={{ fontSize: '0.7rem', color: '#991B1B', marginTop: '0.35rem', maxWidth: '220px' }}>
+                        Reason: {quote.rejectionReason}
+                      </div>
+                    )}
                   </td>
                   
                   {/* Quotation Status Drop Down Column */}
@@ -327,9 +455,9 @@ const Quotations = () => {
                       <select
                         value={quote.quotationStatus}
                         onChange={(e) => handleQuotationStatusChange(quote.id, e.target.value)}
-                        disabled={!quote.fileName}
-                        title={!quote.fileName ? 'Upload the quotation PDF first' : ''}
-                        style={{ ...getQuotationStatusStyle(quote.quotationStatus), opacity: quote.fileName ? 1 : 0.5, cursor: quote.fileName ? 'pointer' : 'not-allowed' }}
+                        disabled={!quote.fileName || isApproved}
+                        title={isApproved ? 'Approved quotation is locked' : (!quote.fileName ? 'Upload the quotation PDF first' : '')}
+                        style={{ ...getQuotationStatusStyle(quote.quotationStatus), opacity: (quote.fileName && !isApproved) ? 1 : 0.5, cursor: (quote.fileName && !isApproved) ? 'pointer' : 'not-allowed' }}
                       >
                         <option value="In Preparation" style={{ color: '#1E293B', backgroundColor: '#fff' }}>In Preparation</option>
                         <option value="Prepared" style={{ color: '#1E293B', backgroundColor: '#fff' }}>Prepared</option>
@@ -346,14 +474,18 @@ const Quotations = () => {
                           <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={quote.fileName}>
                             📄 {quote.fileName}
                           </span>
-                          <button 
-                            onClick={() => handleRemoveFile(quote.id)} 
-                            style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', display: 'flex', padding: 0 }}
-                            title="Remove file"
-                          >
-                            <X size={12} />
-                          </button>
+                          {!isApproved && (
+                            <button
+                              onClick={() => handleRemoveFile(quote.id)}
+                              style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', display: 'flex', padding: 0 }}
+                              title="Remove file"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
                         </div>
+                      ) : isApproved ? (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Locked</span>
                       ) : (
                         <div style={{ position: 'relative' }}>
                           <input 
@@ -395,13 +527,14 @@ const Quotations = () => {
                       <button onClick={() => handleExportPdf(quote)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Export PDF">
                         <Download size={18} />
                       </button>
-                      <button onClick={() => handleDeleteQuote(quote.id)} style={{ background: 'transparent', border: 'none', color: '#DC2626', cursor: 'pointer' }} title="Delete quotation">
+                      <button onClick={() => !isApproved && handleDeleteQuote(quote.id)} disabled={isApproved} style={{ background: 'transparent', border: 'none', color: '#DC2626', cursor: isApproved ? 'not-allowed' : 'pointer', opacity: isApproved ? 0.4 : 1 }} title={isApproved ? 'Approved quotation is locked' : 'Delete quotation'}>
                         <Trash2 size={18} />
                       </button>
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -415,55 +548,75 @@ const Quotations = () => {
           backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100,
           display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Generate Quotation</h3>
+          <div className="card" style={{ width: '100%', maxWidth: '600px', padding: '2rem', borderRadius: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-main)' }}>Upload Quotation</h3>
               <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={20} />
+                <X size={22} />
               </button>
             </div>
-            <form onSubmit={handleGenerateQuote} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <form onSubmit={handleGenerateQuote} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Row 1: Lead ID | Client Name */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Lead ID</label>
-                  <select required value={newQuote.leadId} onChange={(e) => {
-                    const lead = leads.find(l => l.id === e.target.value);
-                    setNewQuote({ ...newQuote, leadId: e.target.value, client: lead ? (lead.name || '') : newQuote.client });
-                  }} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)' }}>
+                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Lead ID</label>
+                  <select
+                    required
+                    value={newQuote.leadId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const lead = leads.find(l => l.id === val);
+                      setNewQuote({ ...newQuote, leadId: val, client: lead ? (lead.name || newQuote.client) : newQuote.client });
+                    }}
+                    style={{ width: '100%', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.9rem', backgroundColor: 'var(--surface-color)' }}
+                  >
                     <option value="">Select lead</option>
-                    {leads.map(l => (
-                      <option key={l.id} value={l.id}>{l.id}{l.name ? ` — ${l.name}` : ''}</option>
-                    ))}
+                    {eligibleLeads.map(l => (<option key={l.id} value={l.id}>{l.name ? `${l.id} — ${l.name}` : l.id}</option>))}
+                    {eligibleLeads.length === 0 && <option value="" disabled>No leads with a completed visit awaiting a quotation</option>}
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Client Name</label>
-                  <input required value={newQuote.client} onChange={(e) => setNewQuote({...newQuote, client: e.target.value})} type="text" placeholder="e.g. Acme Corp" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none' }} />
+                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Client Name</label>
+                  <input required value={newQuote.client} onChange={(e) => setNewQuote({...newQuote, client: e.target.value})} type="text" placeholder="e.g. Acme Corp" style={{ width: '100%', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.9rem' }} />
                 </div>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Services</label>
-                <select required value={newQuote.project} onChange={(e) => setNewQuote({...newQuote, project: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', outline: 'none' }}>
-                  <option value="">Select type</option>
-                  <option value="PEB">PEB</option>
-                  <option value="Tensile">Tensile</option>
-                  <option value="Other roofing">Other roofing</option>
-                </select>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              {/* Row 2: Services | Project Value */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>Amount (ex. GST)</label>
-                  <input required value={newQuote.amount} onChange={(e) => setNewQuote({...newQuote, amount: e.target.value})} type="text" placeholder="e.g. ₹100,000" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
+                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Services</label>
+                  <select required value={newQuote.project} onChange={(e) => setNewQuote({...newQuote, project: e.target.value})} style={{ width: '100%', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', outline: 'none', fontSize: '0.9rem' }}>
+                    <option value="">Select type</option>
+                    <option value="PEB">PEB</option>
+                    <option value="Tensile">Tensile</option>
+                    <option value="Other roofing">Other roofing</option>
+                  </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>GST Amount</label>
-                  <input required value={newQuote.gst} onChange={(e) => setNewQuote({...newQuote, gst: e.target.value})} type="text" placeholder="e.g. ₹18,000" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
+                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Project Value (₹)</label>
+                  <input required value={newQuote.amount} onChange={(e) => setNewQuote({...newQuote, amount: e.target.value})} type="text" placeholder="Enter project value" style={{ width: '100%', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.9rem' }} />
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-outline">Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={!newQuote.leadId || !newQuote.client || !newQuote.project || !newQuote.amount || !newQuote.gst} style={{ opacity: (!newQuote.leadId || !newQuote.client || !newQuote.project || !newQuote.amount || !newQuote.gst) ? 0.5 : 1 }}>Generate</button>
+
+              {/* Row 3: Quotation Type | Upload File (PDF) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Quotation Type</label>
+                  <select value={newQuote.quotationType} onChange={(e) => setNewQuote({...newQuote, quotationType: e.target.value})} style={{ width: '100%', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', outline: 'none', fontSize: '0.9rem' }}>
+                    <option value="Initial Quotation">Initial Quotation</option>
+                    <option value="Revised Quotation">Revised Quotation</option>
+                    <option value="Final Quotation">Final Quotation</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Upload File (PDF)</label>
+                  <input type="file" accept="application/pdf,.pdf" onChange={handleModalFileChange} style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.85rem', backgroundColor: 'var(--surface-color)', color: 'var(--text-muted)', cursor: 'pointer' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '0.75rem' }}>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-outline" style={{ padding: '0.6rem 1.4rem' }}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={!newQuote.leadId || !newQuote.client || !newQuote.project || !newQuote.amount} style={{ padding: '0.6rem 1.6rem', opacity: (!newQuote.leadId || !newQuote.client || !newQuote.project || !newQuote.amount) ? 0.5 : 1 }}>Upload</button>
               </div>
             </form>
           </div>

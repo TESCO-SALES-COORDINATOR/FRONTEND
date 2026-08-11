@@ -4,6 +4,7 @@ import { ToastProvider } from './components/Toast';
 import DashboardLayout from './components/DashboardLayout';
 import DashboardHome from './views/DashboardHome';
 import LeadManagement from './views/LeadManagement';
+import SalesPipeline from './views/SalesPipeline';
 import Appointments from './views/Appointments';
 import Quotations from './views/Quotations';
 import ProjectFiling from './views/ProjectFiling';
@@ -31,6 +32,7 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardHome />} />
             <Route path="leads" element={<LeadManagement />} />
+            <Route path="pipeline" element={<SalesPipeline />} />
             <Route path="appointments" element={<Appointments />} />
             <Route path="quotations" element={<Quotations />} />
             <Route path="projects" element={<ProjectFiling />} />

@@ -23,6 +23,8 @@ const Login = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [generatedOtp, setGeneratedOtp] = useState('');
+  // Popup shown when a deactivated Manager/Coordinator tries to log in
+  const [blockedMsg, setBlockedMsg] = useState('');
 
   // Clear any lingering session when redirected here by a logout (e.g. from the Sales Manager app)
   useEffect(() => {
@@ -36,6 +38,28 @@ const Login = () => {
     e.preventDefault();
     if (!email || !password) {
       addToast('Please fill in all fields', 'warning');
+      return;
+    }
+
+    // Sales Head has a dedicated web app. Authenticate against the backend (so a
+    // changed password takes effect and deactivation is enforced), then open the Head app.
+    if (role === 'Sales Head') {
+      try {
+        const data = await authApi.login('Sales Head', email, password);
+        setSession(data.token, data.user);
+        addToast('Welcome back, Sales Head!', 'success');
+        const base = import.meta.env.VITE_SALES_HEAD_URL || 'http://localhost:5175';
+        const u = data.user || {};
+        const params = new URLSearchParams({ head: u.name || 'Sales Head', email: u.email || email.trim() });
+        window.location.href = `${base}/?${params.toString()}`;
+      } catch (err) {
+        if (/deactivat/i.test(err.message || '')) {
+          clearSession();
+          setBlockedMsg(err.message || 'Your account has been deactivated.');
+        } else {
+          addToast(err.message || 'Invalid email or password', 'error');
+        }
+      }
       return;
     }
 
@@ -57,7 +81,13 @@ const Login = () => {
 
       navigate('/dashboard');
     } catch (err) {
-      addToast(err.message, 'error');
+      // A deactivated account gets a clear blocking popup; make sure no session lingers
+      if (/deactivat/i.test(err.message || '')) {
+        clearSession();
+        setBlockedMsg(err.message || 'Your account has been deactivated.');
+      } else {
+        addToast(err.message, 'error');
+      }
     }
   };
 
@@ -167,6 +197,34 @@ const Login = () => {
           }
         }
       `}</style>
+
+      {/* Account deactivated popup */}
+      {blockedMsg && (
+        <div
+          onClick={() => setBlockedMsg('')}
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', width: '100%', maxWidth: '420px', borderRadius: '16px', padding: '2rem', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', fontFamily: "'Inter', sans-serif" }}
+          >
+            <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+              <Lock size={26} color="#DC2626" />
+            </div>
+            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.25rem', fontWeight: 700, color: '#111827' }}>Account Deactivated</h3>
+            <p style={{ margin: '0 0 1.5rem', fontSize: '0.95rem', color: '#64748B', lineHeight: 1.5 }}>
+              {blockedMsg} You cannot access the system. Please contact your Sales Head or administrator.
+            </p>
+            <button
+              onClick={() => setBlockedMsg('')}
+              style={{ background: '#4F46E5', color: '#fff', border: 'none', borderRadius: '10px', padding: '0.7rem 1.75rem', fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Container */}
       <div className="login-container" style={{
         flex: 1,

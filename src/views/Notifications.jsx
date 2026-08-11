@@ -7,10 +7,10 @@ const QUOTES_API = 'http://localhost:5000/api/quotations';
 const PROJECTS_API = 'http://localhost:5000/api/projects';
 const APPTS_API = 'http://localhost:5000/api/appointments';
 
-const READ_KEY = 'crm_notif_read';
+export const READ_KEY = 'crm_notif_read';
 
 // type → icon + color (icons can't be stored in data, so resolve on the client)
-const TYPE_META = {
+export const TYPE_META = {
   appointment: { icon: Calendar, color: 'var(--primary-color)' },
   quotation:   { icon: FileText, color: 'var(--warning-color)' },
   payment:     { icon: DollarSign, color: '#DC2626' },
@@ -25,20 +25,30 @@ const parseAmount = (val) => {
   return Number.isNaN(n) ? 0 : n;
 };
 
-const timeAgo = (date) => {
+// Relative label ("2h ago", "1d ago") from a REAL timestamp
+export const timeAgo = (date) => {
   if (!date) return '';
   const diff = Date.now() - new Date(date).getTime();
+  if (Number.isNaN(diff)) return '';
   if (diff < 0) return 'just now';
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min${mins > 1 ? 's' : ''} ago`;
+  if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} hour${hrs > 1 ? 's' : ''} ago`;
+  if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
-  return `${days} day${days > 1 ? 's' : ''} ago`;
+  return `${days}d ago`;
 };
 
-const loadReadSet = () => {
+// Absolute date/time from the record's REAL timestamp (e.g. "Aug 4, 2026, 2:30 PM")
+export const fmtDateTime = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+};
+
+export const loadReadSet = () => {
   try {
     return new Set(JSON.parse(localStorage.getItem(READ_KEY) || '[]'));
   } catch {
@@ -47,114 +57,139 @@ const loadReadSet = () => {
 };
 const saveReadSet = (set) => localStorage.setItem(READ_KEY, JSON.stringify([...set]));
 
+// ── SHARED notification builder ──────────────────────────────────
+// The single source of truth for BOTH the Notifications page and the TopNav bell
+// dropdown. Fetches the same source data (leads / quotations / projects /
+// appointments), derives the same items with the same ids/priorities/text, and
+// returns them sorted newest-first by each record's REAL timestamp.
+export const buildNotifications = async () => {
+  const [leads, quotes, projects, appts] = await Promise.all([
+    fetch(LEADS_API).then((r) => r.json()).catch(() => []),
+    fetch(QUOTES_API).then((r) => r.json()).catch(() => []),
+    fetch(PROJECTS_API).then((r) => r.json()).catch(() => []),
+    fetch(APPTS_API).then((r) => r.json()).catch(() => []),
+  ]);
+
+  const items = [];
+
+  // ONE notification per appointment, reflecting the latest MANAGER action on the shared
+  // record. This replaces the earlier duplicate spam (created + reminder + started +
+  // reschedule + completed all firing for the same appointment).
+  (Array.isArray(appts) ? appts : []).forEach((a) => {
+    const title = a.title || 'Appointment';
+    const isVisit = a.type === 'Visits' || a.type === 'Site Visit' || /visit/i.test(a.visitType || '');
+    const noun = isVisit ? 'Visit' : 'Appointment';
+    const when = `${a.date || ''}${a.timeStart ? ' ' + a.timeStart : ''}`;
+    if (a.rescheduledAt && a.rescheduleStatus === 'Pending') {
+      items.push({
+        id: `resched-${a._id || a.id}-${a.rescheduledAt}`, type: 'appointment', priority: 'High',
+        text: `Reschedule request from ${a.rescheduledBy || 'manager'} — needs your approval: ${title} → ${when}`,
+        sortDate: a.rescheduledAt,
+      });
+    } else if (a.completedAt) {
+      items.push({
+        id: `completed-${a._id || a.id}`, type: 'appointment', priority: 'High',
+        text: `${noun} ended by ${a.completedBy || 'manager'}: ${title}`,
+        sortDate: a.completedAt,
+      });
+    } else if (a.startedAt) {
+      items.push({
+        id: `started-${a._id || a.id}-${a.startedAt}`, type: 'appointment', priority: 'High',
+        text: `${noun} started by ${a.startedBy || 'manager'}: ${title}`,
+        sortDate: a.startedAt,
+      });
+    } else if (a.rescheduledAt) {
+      items.push({
+        id: `resched-${a._id || a.id}-${a.rescheduledAt}`, type: 'appointment', priority: 'High',
+        text: `Rescheduled by ${a.rescheduledBy || 'manager'}: ${title} → ${when}`,
+        sortDate: a.rescheduledAt,
+      });
+    }
+  });
+
+  // Pending quotations + overdue payments (derived from quotations)
+  (Array.isArray(quotes) ? quotes : []).forEach((q) => {
+    if (q.approvalStatus === 'Pending') {
+      items.push({
+        id: `quote-${q.id}`, type: 'quotation', priority: 'Medium',
+        text: `Quotation ${q.id} pending approval`,
+        sortDate: q.updatedAt || q.createdAt,
+      });
+    }
+    if (q.approvalStatus === 'Approved') {
+      items.push({
+        id: `quote-appr-${q.id}`, type: 'quotation', priority: 'High',
+        text: `Quotation ${q.id} approved by Sales Head`,
+        sortDate: q.updatedAt || q.createdAt,
+      });
+    }
+    if (q.approvalStatus === 'Rejected') {
+      items.push({
+        id: `quote-rej-${q.id}`, type: 'quotation', priority: 'High',
+        text: `Quotation ${q.id} rejected by Sales Head${q.rejectionReason ? ' — Reason: ' + q.rejectionReason : ''}`,
+        sortDate: q.updatedAt || q.createdAt,
+      });
+    }
+    if (q.approvalStatus === 'Changes Requested') {
+      items.push({
+        id: `quote-chg-${q.id}-${q.updatedAt || ''}`, type: 'quotation', priority: 'High',
+        text: `Changes requested by Sales Head on Quotation ${q.id}${q.rejectionReason ? ' — ' + q.rejectionReason : ''}`,
+        sortDate: q.updatedAt || q.createdAt,
+      });
+    }
+    const created = q.createdAt ? new Date(q.createdAt) : null;
+    const due = created ? new Date(created.getTime() + 30 * 864e5) : null;
+    const received = q.approvalStatus === 'Approved' && q.quotationStatus === 'Prepared';
+    if (due && due < new Date() && !received && parseAmount(q.amount) > 0) {
+      items.push({
+        id: `pay-${q.id}`, type: 'payment', priority: 'High',
+        text: `Payment overdue for Invoice INV-${q.id}`,
+        sortDate: q.createdAt,
+      });
+    }
+  });
+
+  // New / unassigned leads
+  (Array.isArray(leads) ? leads : []).forEach((l) => {
+    const isNew = /new|received/i.test(l.status || '');
+    const unassigned = !l.manager || l.manager === 'Unassigned';
+    if (isNew || unassigned) {
+      items.push({
+        id: `lead-${l.id}`, type: 'lead', priority: unassigned ? 'Medium' : 'Low',
+        text: unassigned ? `Lead ${l.name || l.id} needs assignment` : `New lead: ${l.name || l.id}`,
+        sortDate: l.updatedAt || l.createdAt,
+      });
+    }
+  });
+
+  // Recent project updates
+  (Array.isArray(projects) ? projects : []).forEach((p) => {
+    items.push({
+      id: `proj-${p.id}`, type: 'project', priority: 'Low',
+      text: `Project File ${p.id} — ${p.status || 'updated'}`,
+      sortDate: p.updatedAt || p.createdAt,
+    });
+  });
+
+  // Newest-first by each record's REAL timestamp — consistent everywhere
+  items.sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0));
+  return items.slice(0, 25);
+};
+
 const Notifications = () => {
   const addToast = useToast();
   const [notifs, setNotifs] = useState([]);
 
   useEffect(() => {
+    let cancelled = false;
     const build = async () => {
-      const [leads, quotes, projects, appts] = await Promise.all([
-        fetch(LEADS_API).then((r) => r.json()).catch(() => []),
-        fetch(QUOTES_API).then((r) => r.json()).catch(() => []),
-        fetch(PROJECTS_API).then((r) => r.json()).catch(() => []),
-        fetch(APPTS_API).then((r) => r.json()).catch(() => []),
-      ]);
-
+      const items = await buildNotifications();
+      if (cancelled) return;
       const readSet = loadReadSet();
-      const items = [];
-
-      // Appointments rescheduled by a manager — notify the coordinator with the new date/time
-      (Array.isArray(appts) ? appts : [])
-        .filter((a) => a.rescheduledAt)
-        .forEach((a) => {
-          items.push({
-            id: `resched-${a._id || a.id}-${a.rescheduledAt}`, type: 'appointment', priority: 'High',
-            text: `Rescheduled by ${a.rescheduledBy || 'manager'}: ${a.title || 'Appointment'} → ${a.date}${a.timeStart ? ' ' + a.timeStart : ''}`,
-            sortDate: a.rescheduledAt,
-          });
-        });
-
-      // Visits completed by a manager — notify the coordinator
-      (Array.isArray(appts) ? appts : [])
-        .filter((a) => a.completedAt)
-        .forEach((a) => {
-          items.push({
-            id: `completed-${a._id || a.id}`, type: 'appointment', priority: 'High',
-            text: `Visit completed by ${a.completedBy || 'manager'}: ${a.title || 'Visit'}`,
-            sortDate: a.completedAt,
-          });
-        });
-
-      // Visits created by a manager — notify the coordinator
-      (Array.isArray(appts) ? appts : [])
-        .filter((a) => a.createdBy)
-        .forEach((a) => {
-          items.push({
-            id: `created-${a._id || a.id}`, type: 'appointment', priority: 'Medium',
-            text: `New visit created by ${a.createdBy}: ${a.title || 'Visit'} on ${a.date || ''}`,
-            sortDate: a.createdAt || a.date,
-          });
-        });
-
-      // Upcoming appointments (not completed)
-      (Array.isArray(appts) ? appts : [])
-        .filter((a) => a.status !== 'Completed')
-        .forEach((a) => {
-          const id = `appt-${a._id || a.id}`;
-          items.push({
-            id, type: 'appointment', priority: 'High',
-            text: `Reminder: ${a.title || 'Appointment'}${a.location ? ' at ' + a.location : ''}`,
-            sortDate: a.createdAt || a.date,
-          });
-        });
-
-      // Pending quotations + overdue payments (derived from quotations)
-      (Array.isArray(quotes) ? quotes : []).forEach((q) => {
-        if (q.approvalStatus === 'Pending') {
-          items.push({
-            id: `quote-${q.id}`, type: 'quotation', priority: 'Medium',
-            text: `Quotation ${q.id} pending approval`,
-            sortDate: q.updatedAt || q.createdAt,
-          });
-        }
-        const created = q.createdAt ? new Date(q.createdAt) : null;
-        const due = created ? new Date(created.getTime() + 30 * 864e5) : null;
-        const received = q.approvalStatus === 'Approved' && q.quotationStatus === 'Prepared';
-        if (due && due < new Date() && !received && parseAmount(q.amount) > 0) {
-          items.push({
-            id: `pay-${q.id}`, type: 'payment', priority: 'High',
-            text: `Payment overdue for Invoice INV-${q.id}`,
-            sortDate: q.createdAt,
-          });
-        }
-      });
-
-      // New / unassigned leads
-      (Array.isArray(leads) ? leads : []).forEach((l) => {
-        const isNew = /new|received/i.test(l.status || '');
-        const unassigned = !l.manager || l.manager === 'Unassigned';
-        if (isNew || unassigned) {
-          items.push({
-            id: `lead-${l.id}`, type: 'lead', priority: unassigned ? 'Medium' : 'Low',
-            text: unassigned ? `Lead ${l.name || l.id} needs assignment` : `New lead: ${l.name || l.id}`,
-            sortDate: l.updatedAt || l.createdAt,
-          });
-        }
-      });
-
-      // Recent project updates
-      (Array.isArray(projects) ? projects : []).forEach((p) => {
-        items.push({
-          id: `proj-${p.id}`, type: 'project', priority: 'Low',
-          text: `Project File ${p.id} — ${p.status || 'updated'}`,
-          sortDate: p.updatedAt || p.createdAt,
-        });
-      });
-
-      items.sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0));
-      const withMeta = items.slice(0, 25).map((n) => ({
+      const withMeta = items.map((n) => ({
         ...n,
         time: timeAgo(n.sortDate),
+        when: fmtDateTime(n.sortDate),
         read: readSet.has(n.id),
         color: TYPE_META[n.type].color,
         icon: TYPE_META[n.type].icon,
@@ -162,6 +197,10 @@ const Notifications = () => {
       setNotifs(withMeta);
     };
     build();
+    // Poll so manager-side events (reschedule, visit started/ended, quotation
+    // decisions) surface here in real time without a manual refresh.
+    const iv = setInterval(build, 15000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, []);
 
   const handleMarkAllRead = () => {
@@ -208,10 +247,11 @@ const Notifications = () => {
               <notif.icon size={20} />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.25rem' }}>
                 <p style={{ margin: 0, fontWeight: notif.read ? '500' : '600', color: 'var(--text-main)', fontSize: '1rem' }}>{notif.text}</p>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{notif.time}</span>
+                <span title={notif.when} style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{notif.time}</span>
               </div>
+              {notif.when && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{notif.when}</div>}
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
                 <span className={`badge ${notif.priority === 'High' ? 'badge-danger' : notif.priority === 'Medium' ? 'badge-warning' : 'badge-primary'}`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.5rem' }}>
                   {notif.priority}

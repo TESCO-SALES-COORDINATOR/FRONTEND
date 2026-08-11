@@ -1,8 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Bell, Shield, PaintBucket, Briefcase, Save, LogOut } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { authApi, clearSession } from '../api/client';
+
+const getStoredUser = () => {
+  try {
+    const base = JSON.parse(localStorage.getItem('crm_user') || 'null') || {};
+    const override = JSON.parse(localStorage.getItem('crm_profile') || 'null') || {};
+    return { ...base, ...override };
+  } catch { return {}; }
+};
 
 const SettingsSection = ({ title, icon: Icon, children }) => (
   <div className="card" style={{ marginBottom: '1.5rem' }}>
@@ -39,11 +47,37 @@ const Settings = () => {
   const addToast = useToast();
   const navigate = useNavigate();
 
+  const storedUser = getStoredUser();
+  const [fullName, setFullName] = useState(storedUser.name || 'Indhumathi T');
+  const [email, setEmail] = useState(storedUser.email || 'akash@constructioncrm.com');
+
+  const handleSave = () => {
+    const user = getStoredUser();
+    const name = (fullName || '').trim() || user.name;
+    const mail = (email || '').trim() || user.email;
+    // Persist a dedicated profile override that survives re-login. The login flow
+    // rewrites crm_user, so writing only there would let the name revert; crm_profile
+    // is never touched by login, so the change sticks.
+    const override = { ...(JSON.parse(localStorage.getItem('crm_profile') || 'null') || {}), name, email: mail };
+    localStorage.setItem('crm_profile', JSON.stringify(override));
+    // Keep crm_user in sync for immediate consistency across the app.
+    localStorage.setItem('crm_user', JSON.stringify({ ...user, name, email: mail }));
+    // Reflect the edited fields in THIS view immediately.
+    setFullName(name);
+    setEmail(mail);
+    // Notify every component that displays the profile (sidebar, top nav, greeting)
+    // so they re-read the merged profile with no manual refresh. A same-tab
+    // localStorage write does not fire the native `storage` event, so we dispatch
+    // a custom event that the persistent Sidebar listens for.
+    window.dispatchEvent(new Event('crm-profile-updated'));
+    addToast('Settings saved successfully!', 'success');
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '700' }}>Settings</h2>
-        <button className="btn btn-primary" style={{ display: 'flex', gap: '0.5rem' }} onClick={() => addToast('Settings saved successfully!', 'success')}>
+        <button className="btn btn-primary" style={{ display: 'flex', gap: '0.5rem' }} onClick={handleSave}>
           <Save size={16} /> Save Changes
         </button>
       </div>
@@ -52,11 +86,11 @@ const Settings = () => {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Full Name</label>
-            <input type="text" defaultValue={(JSON.parse(localStorage.getItem('crm_user') || 'null')?.name) || 'Indhumathi T'} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
+            <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Email Address</label>
-            <input type="email" defaultValue="akash@constructioncrm.com" style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
           </div>
         </div>
       </SettingsSection>
@@ -83,7 +117,7 @@ const Settings = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <p style={{ margin: 0, fontWeight: '500', fontSize: '0.875rem' }}>Active Session</p>
-            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>You are currently logged in as akash@constructioncrm.com</p>
+            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>You are currently logged in as {email}</p>
           </div>
           <button 
             type="button"
