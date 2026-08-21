@@ -1,5 +1,7 @@
-// Small API client for the Nexus CRM backend
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Small API client for the Nexus CRM backend.
+// Defaults to the PRODUCTION Sales Coordinator API so the app works without a
+// local backend. Override with VITE_API_URL for a different environment.
+const API_BASE = import.meta.env.VITE_API_URL || 'https://api-salescoordinator.tescomanagement.com/api';
 
 export const getToken = () => localStorage.getItem('crm_token');
 
