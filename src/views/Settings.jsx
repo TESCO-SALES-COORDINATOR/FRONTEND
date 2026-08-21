@@ -51,26 +51,40 @@ const Settings = () => {
   const [fullName, setFullName] = useState(storedUser.name || 'Indhumathi T');
   const [email, setEmail] = useState(storedUser.email || 'akash@constructioncrm.com');
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const user = getStoredUser();
     const name = (fullName || '').trim() || user.name;
     const mail = (email || '').trim() || user.email;
-    // Persist a dedicated profile override that survives re-login. The login flow
-    // rewrites crm_user, so writing only there would let the name revert; crm_profile
-    // is never touched by login, so the change sticks.
-    const override = { ...(JSON.parse(localStorage.getItem('crm_profile') || 'null') || {}), name, email: mail };
+
+    // Persist to MongoDB first so the name survives logout/login (login re-reads
+    // crm_user from the DB record). Keep the local overrides updated regardless so
+    // the UI reflects the edit instantly even if the request fails.
+    let saved = { ...user, name, email: mail };
+    let serverOk = false;
+    try {
+      const res = await authApi.updateProfile({ name, email: mail });
+      if (res && res.user) saved = { ...user, ...res.user };
+      serverOk = true;
+    } catch (err) {
+      addToast(err.message || 'Could not save to server. Changes kept locally.', 'error');
+    }
+
+    // Write the (server-confirmed) user to crm_user, and keep crm_profile as a
+    // dedicated override that the login flow never touches, so the change sticks.
+    localStorage.setItem('crm_user', JSON.stringify(saved));
+    const override = { ...(JSON.parse(localStorage.getItem('crm_profile') || 'null') || {}), name: saved.name, email: saved.email };
     localStorage.setItem('crm_profile', JSON.stringify(override));
-    // Keep crm_user in sync for immediate consistency across the app.
-    localStorage.setItem('crm_user', JSON.stringify({ ...user, name, email: mail }));
+
     // Reflect the edited fields in THIS view immediately.
-    setFullName(name);
-    setEmail(mail);
+    setFullName(saved.name);
+    setEmail(saved.email);
+
     // Notify every component that displays the profile (sidebar, top nav, greeting)
     // so they re-read the merged profile with no manual refresh. A same-tab
     // localStorage write does not fire the native `storage` event, so we dispatch
     // a custom event that the persistent Sidebar listens for.
     window.dispatchEvent(new Event('crm-profile-updated'));
-    addToast('Settings saved successfully!', 'success');
+    if (serverOk) addToast('Settings saved successfully!', 'success');
   };
 
   return (

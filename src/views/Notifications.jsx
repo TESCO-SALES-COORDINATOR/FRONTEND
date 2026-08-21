@@ -1,15 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, Calendar, FileText, DollarSign, UserCheck, FolderOpen } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import { notificationsApi } from '../api/client';
 
-const LEADS_API = 'http://localhost:5000/api/leads';
-const QUOTES_API = 'http://localhost:5000/api/quotations';
-const PROJECTS_API = 'http://localhost:5000/api/projects';
-const APPTS_API = 'http://localhost:5000/api/appointments';
-
-export const READ_KEY = 'crm_notif_read';
-
-// type → icon + color (icons can't be stored in data, so resolve on the client)
+// entityType → icon + color (icons can't be stored in data, so resolve on the client)
 export const TYPE_META = {
   appointment: { icon: Calendar, color: 'var(--primary-color)' },
   quotation:   { icon: FileText, color: 'var(--warning-color)' },
@@ -17,13 +11,7 @@ export const TYPE_META = {
   lead:        { icon: UserCheck, color: 'var(--success-color)' },
   project:     { icon: FolderOpen, color: 'var(--text-muted)' },
 };
-
-const parseAmount = (val) => {
-  if (typeof val === 'number') return val;
-  if (!val) return 0;
-  const n = parseFloat(String(val).replace(/[^0-9.]/g, ''));
-  return Number.isNaN(n) ? 0 : n;
-};
+const metaFor = (n) => TYPE_META[n.entityType] || { icon: Bell, color: 'var(--text-muted)' };
 
 // Relative label ("2h ago", "1d ago") from a REAL timestamp
 export const timeAgo = (date) => {
@@ -48,183 +36,62 @@ export const fmtDateTime = (date) => {
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
-export const loadReadSet = () => {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(READ_KEY) || '[]'));
-  } catch {
-    return new Set();
-  }
-};
-const saveReadSet = (set) => localStorage.setItem(READ_KEY, JSON.stringify([...set]));
-
-// ── SHARED notification builder ──────────────────────────────────
-// The single source of truth for BOTH the Notifications page and the TopNav bell
-// dropdown. Fetches the same source data (leads / quotations / projects /
-// appointments), derives the same items with the same ids/priorities/text, and
-// returns them sorted newest-first by each record's REAL timestamp.
-export const buildNotifications = async () => {
-  const [leads, quotes, projects, appts] = await Promise.all([
-    fetch(LEADS_API).then((r) => r.json()).catch(() => []),
-    fetch(QUOTES_API).then((r) => r.json()).catch(() => []),
-    fetch(PROJECTS_API).then((r) => r.json()).catch(() => []),
-    fetch(APPTS_API).then((r) => r.json()).catch(() => []),
-  ]);
-
-  const items = [];
-
-  // ONE notification per appointment, reflecting the latest MANAGER action on the shared
-  // record. This replaces the earlier duplicate spam (created + reminder + started +
-  // reschedule + completed all firing for the same appointment).
-  (Array.isArray(appts) ? appts : []).forEach((a) => {
-    const title = a.title || 'Appointment';
-    const isVisit = a.type === 'Visits' || a.type === 'Site Visit' || /visit/i.test(a.visitType || '');
-    const noun = isVisit ? 'Visit' : 'Appointment';
-    const when = `${a.date || ''}${a.timeStart ? ' ' + a.timeStart : ''}`;
-    if (a.rescheduledAt && a.rescheduleStatus === 'Pending') {
-      items.push({
-        id: `resched-${a._id || a.id}-${a.rescheduledAt}`, type: 'appointment', priority: 'High',
-        text: `Reschedule request from ${a.rescheduledBy || 'manager'} — needs your approval: ${title} → ${when}`,
-        sortDate: a.rescheduledAt,
-      });
-    } else if (a.completedAt) {
-      items.push({
-        id: `completed-${a._id || a.id}`, type: 'appointment', priority: 'High',
-        text: `${noun} ended by ${a.completedBy || 'manager'}: ${title}`,
-        sortDate: a.completedAt,
-      });
-    } else if (a.startedAt) {
-      items.push({
-        id: `started-${a._id || a.id}-${a.startedAt}`, type: 'appointment', priority: 'High',
-        text: `${noun} started by ${a.startedBy || 'manager'}: ${title}`,
-        sortDate: a.startedAt,
-      });
-    } else if (a.rescheduledAt) {
-      items.push({
-        id: `resched-${a._id || a.id}-${a.rescheduledAt}`, type: 'appointment', priority: 'High',
-        text: `Rescheduled by ${a.rescheduledBy || 'manager'}: ${title} → ${when}`,
-        sortDate: a.rescheduledAt,
-      });
-    }
-  });
-
-  // Pending quotations + overdue payments (derived from quotations)
-  (Array.isArray(quotes) ? quotes : []).forEach((q) => {
-    if (q.approvalStatus === 'Pending') {
-      items.push({
-        id: `quote-${q.id}`, type: 'quotation', priority: 'Medium',
-        text: `Quotation ${q.id} pending approval`,
-        sortDate: q.updatedAt || q.createdAt,
-      });
-    }
-    if (q.approvalStatus === 'Approved') {
-      items.push({
-        id: `quote-appr-${q.id}`, type: 'quotation', priority: 'High',
-        text: `Quotation ${q.id} approved by Sales Head`,
-        sortDate: q.updatedAt || q.createdAt,
-      });
-    }
-    if (q.approvalStatus === 'Rejected') {
-      items.push({
-        id: `quote-rej-${q.id}`, type: 'quotation', priority: 'High',
-        text: `Quotation ${q.id} rejected by Sales Head${q.rejectionReason ? ' — Reason: ' + q.rejectionReason : ''}`,
-        sortDate: q.updatedAt || q.createdAt,
-      });
-    }
-    if (q.approvalStatus === 'Changes Requested') {
-      items.push({
-        id: `quote-chg-${q.id}-${q.updatedAt || ''}`, type: 'quotation', priority: 'High',
-        text: `Changes requested by Sales Head on Quotation ${q.id}${q.rejectionReason ? ' — ' + q.rejectionReason : ''}`,
-        sortDate: q.updatedAt || q.createdAt,
-      });
-    }
-    const created = q.createdAt ? new Date(q.createdAt) : null;
-    const due = created ? new Date(created.getTime() + 30 * 864e5) : null;
-    const received = q.approvalStatus === 'Approved' && q.quotationStatus === 'Prepared';
-    if (due && due < new Date() && !received && parseAmount(q.amount) > 0) {
-      items.push({
-        id: `pay-${q.id}`, type: 'payment', priority: 'High',
-        text: `Payment overdue for Invoice INV-${q.id}`,
-        sortDate: q.createdAt,
-      });
-    }
-  });
-
-  // New / unassigned leads
-  (Array.isArray(leads) ? leads : []).forEach((l) => {
-    const isNew = /new|received/i.test(l.status || '');
-    const unassigned = !l.manager || l.manager === 'Unassigned';
-    if (isNew || unassigned) {
-      items.push({
-        id: `lead-${l.id}`, type: 'lead', priority: unassigned ? 'Medium' : 'Low',
-        text: unassigned ? `Lead ${l.name || l.id} needs assignment` : `New lead: ${l.name || l.id}`,
-        sortDate: l.updatedAt || l.createdAt,
-      });
-    }
-  });
-
-  // Recent project updates
-  (Array.isArray(projects) ? projects : []).forEach((p) => {
-    items.push({
-      id: `proj-${p.id}`, type: 'project', priority: 'Low',
-      text: `Project File ${p.id} — ${p.status || 'updated'}`,
-      sortDate: p.updatedAt || p.createdAt,
-    });
-  });
-
-  // Newest-first by each record's REAL timestamp — consistent everywhere
-  items.sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0));
-  return items.slice(0, 25);
-};
-
 const Notifications = () => {
   const addToast = useToast();
   const [notifs, setNotifs] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    const build = async () => {
-      const items = await buildNotifications();
-      if (cancelled) return;
-      const readSet = loadReadSet();
-      const withMeta = items.map((n) => ({
-        ...n,
-        time: timeAgo(n.sortDate),
-        when: fmtDateTime(n.sortDate),
-        read: readSet.has(n.id),
-        color: TYPE_META[n.type].color,
-        icon: TYPE_META[n.type].icon,
-      }));
-      setNotifs(withMeta);
-    };
-    build();
-    // Poll so manager-side events (reschedule, visit started/ended, quotation
-    // decisions) surface here in real time without a manual refresh.
-    const iv = setInterval(build, 15000);
-    return () => { cancelled = true; clearInterval(iv); };
+  // Pull the real, DB-backed notifications + unread badge count (Sales Coordinator scope).
+  const load = useCallback(async () => {
+    try {
+      const data = await notificationsApi.getNotifications();
+      setNotifs(Array.isArray(data?.notifications) ? data.notifications : []);
+      setUnreadCount(Number(data?.unreadCount) || 0);
+    } catch {
+      /* leave last-known state on transient errors */
+    }
   }, []);
 
-  const handleMarkAllRead = () => {
-    const set = loadReadSet();
-    notifs.forEach((n) => set.add(n.id));
-    saveReadSet(set);
-    setNotifs(notifs.map((n) => ({ ...n, read: true })));
-    addToast('All notifications marked as read', 'success');
+  // Fetch on mount and poll every 30s so manager/head-side events surface in real time.
+  useEffect(() => {
+    load();
+    const iv = setInterval(load, 30000);
+    return () => clearInterval(iv);
+  }, [load]);
+
+  const handleMarkAllRead = async () => {
+    if (unreadCount === 0) return;
+    setNotifs((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    setUnreadCount(0);
+    try {
+      await notificationsApi.markAllRead();
+      addToast('All notifications marked as read', 'success');
+    } catch {
+      load();
+    }
   };
 
-  const handleMarkRead = (id) => {
-    const set = loadReadSet();
-    set.add(id);
-    saveReadSet(set);
-    setNotifs(notifs.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  const handleMarkRead = async (n) => {
+    if (n.isRead) return;
+    // Optimistic: flip the item + decrement the badge immediately.
+    setNotifs((prev) => prev.map((x) => (x._id === n._id ? { ...x, isRead: true } : x)));
+    setUnreadCount((c) => Math.max(0, c - 1));
+    try {
+      await notificationsApi.markRead(n._id);
+    } catch {
+      load();
+    }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <Bell size={24} /> Notifications
+          <Bell size={24} /> Notifications{unreadCount > 0 ? ` (${unreadCount})` : ''}
         </h2>
-        <button className="btn btn-outline" style={{ fontSize: '0.875rem' }} onClick={handleMarkAllRead}>Mark all as read</button>
+        {unreadCount > 0 && (
+          <button className="btn btn-outline" style={{ fontSize: '0.875rem' }} onClick={handleMarkAllRead}>Mark all as read</button>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -233,34 +100,39 @@ const Notifications = () => {
             You're all caught up — no notifications.
           </div>
         )}
-        {notifs.map((notif) => (
-          <div key={notif.id} className="card" style={{
-            display: 'flex', gap: '1rem', alignItems: 'flex-start',
-            opacity: notif.read ? 0.6 : 1,
-            borderLeft: notif.read ? 'none' : `4px solid ${notif.color}`,
-            transition: 'opacity 0.2s'
-          }}>
-            <div style={{
-              width: '40px', height: '40px', borderRadius: '50%', backgroundColor: `${notif.color}15`, color: notif.color,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+        {notifs.map((notif) => {
+          const meta = metaFor(notif);
+          const Icon = meta.icon;
+          const when = notif.eventAt || notif.createdAt;
+          return (
+            <div key={notif._id} className="card" style={{
+              display: 'flex', gap: '1rem', alignItems: 'flex-start',
+              opacity: notif.isRead ? 0.6 : 1,
+              borderLeft: notif.isRead ? 'none' : `4px solid ${meta.color}`,
+              transition: 'opacity 0.2s'
             }}>
-              <notif.icon size={20} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.25rem' }}>
-                <p style={{ margin: 0, fontWeight: notif.read ? '500' : '600', color: 'var(--text-main)', fontSize: '1rem' }}>{notif.text}</p>
-                <span title={notif.when} style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{notif.time}</span>
+              <div style={{
+                width: '40px', height: '40px', borderRadius: '50%', backgroundColor: `${meta.color}15`, color: meta.color,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <Icon size={20} />
               </div>
-              {notif.when && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{notif.when}</div>}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
-                <span className={`badge ${notif.priority === 'High' ? 'badge-danger' : notif.priority === 'Medium' ? 'badge-warning' : 'badge-primary'}`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.5rem' }}>
-                  {notif.priority}
-                </span>
-                {!notif.read && <button style={{ background: 'none', border: 'none', color: 'var(--primary-color)', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '500' }} onClick={() => handleMarkRead(notif.id)}>Mark as read</button>}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                  <p style={{ margin: 0, fontWeight: notif.isRead ? '500' : '700', color: 'var(--text-main)', fontSize: '1rem' }}>{notif.title}</p>
+                  <span title={fmtDateTime(when)} style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{timeAgo(when)}</span>
+                </div>
+                <p style={{ margin: 0, color: 'var(--text-main)', fontSize: '0.9rem' }}>{notif.message}</p>
+                {when && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{fmtDateTime(when)}</div>}
+                {!notif.isRead && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <button style={{ background: 'none', border: 'none', color: 'var(--primary-color)', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '500', padding: 0 }} onClick={() => handleMarkRead(notif)}>Mark as read</button>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

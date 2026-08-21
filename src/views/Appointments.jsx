@@ -477,6 +477,29 @@ const Appointments = () => {
                       ))}
                     </div>
                   )}
+
+                  {/* Site visit details captured by the manager (image + notes) */}
+                  {(apt.siteImage || apt.measurementImage || apt.measurementNote || apt.meetingRemarks) && (
+                    <div style={{ marginTop: '0.65rem', paddingTop: '0.55rem', borderTop: '1px dashed var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.3px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Site Visit Details</span>
+                      {(apt.siteImage || apt.measurementImage) && (
+                        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                          {apt.siteImage && (
+                            <a href={apt.siteImage} target="_blank" rel="noopener noreferrer" title="Open site image">
+                              <img src={apt.siteImage} alt="Site" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border-color)' }} />
+                            </a>
+                          )}
+                          {apt.measurementImage && (
+                            <a href={apt.measurementImage} target="_blank" rel="noopener noreferrer" title="Open measurement image">
+                              <img src={apt.measurementImage} alt="Measurement" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border-color)' }} />
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {apt.measurementNote && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}><span style={{ fontWeight: 600 }}>Measurement:</span> {apt.measurementNote}</div>}
+                      {apt.meetingRemarks && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}><span style={{ fontWeight: 600 }}>Remarks:</span> {apt.meetingRemarks}</div>}
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}

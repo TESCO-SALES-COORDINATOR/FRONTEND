@@ -13,13 +13,30 @@ import Reports from './views/Reports';
 import Notifications from './views/Notifications';
 import Settings from './views/Settings';
 import Login from './views/Login';
+import { getUser, clearSession } from './api/client';
 
-// Protect dashboard routes so unauthenticated visits redirect to /login
+// This application is LOCKED to the Sales Coordinator role.
+const APP_ROLE = 'Sales Coordinator';
+
+// Protect dashboard routes:
+//  1. must be authenticated (token + flag)
+//  2. the signed-in account's role must match this app's role.
+// This blocks accessing another role's dashboard by editing the URL or by
+// carrying over a token/localStorage from a different role's app.
 const ProtectedRoute = ({ children }) => {
-  const isAuthenticated =
+  const authenticated =
     !!localStorage.getItem('crm_token') &&
     localStorage.getItem('crm_authenticated') === 'true';
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+
+  if (!authenticated) return <Navigate to="/login" replace />;
+
+  const role = getUser()?.role;
+  if (role && role !== APP_ROLE) {
+    // Wrong role for this portal — drop the session and bounce to login.
+    clearSession();
+    return <Navigate to="/login" replace />;
+  }
+  return children;
 };
 
 function App() {

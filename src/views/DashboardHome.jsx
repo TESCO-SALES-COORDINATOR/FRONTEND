@@ -80,13 +80,26 @@ const DashboardHome = () => {
     return () => clearInterval(iv);
   }, []);
 
-  const userName = (() => {
+  // Greeting name lives in state so a Settings edit updates it instantly. We merge
+  // crm_user + crm_profile (profile override wins) and recompute on the same-tab
+  // custom event and the cross-tab native `storage` event.
+  const readUserName = () => {
     try {
       const base = JSON.parse(localStorage.getItem('crm_user') || 'null') || {};
       const override = JSON.parse(localStorage.getItem('crm_profile') || 'null') || {};
-      return ({ ...base, ...override }).name;
-    } catch { return null; }
-  })() || 'Akash';
+      return ({ ...base, ...override }).name || 'Akash';
+    } catch { return 'Akash'; }
+  };
+  const [userName, setUserName] = useState(readUserName);
+  useEffect(() => {
+    const refresh = () => setUserName(readUserName());
+    window.addEventListener('crm-profile-updated', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('crm-profile-updated', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
 
   /* ── Manager filter ── */
   // Only the four real sales managers should appear in the dropdown (no stray/test names)

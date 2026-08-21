@@ -50,6 +50,13 @@ export async function api(path, { method = 'GET', body, auth = false } = {}) {
   return data;
 }
 
+export const notificationsApi = {
+  getNotifications: () => api('/notifications'),
+  getUnreadCount: () => api('/notifications/unread-count'),
+  markRead: (id) => api(`/notifications/${id}/read`, { method: 'PATCH' }),
+  markAllRead: () => api('/notifications/read-all', { method: 'PATCH' }),
+};
+
 export const authApi = {
   login: (role, email, password) =>
     api('/auth/login', { method: 'POST', body: { role, email, password } }),
@@ -61,4 +68,6 @@ export const authApi = {
   resetPassword: (email, otp, newPassword) =>
     api('/auth/reset-password', { method: 'POST', body: { email, otp, newPassword } }),
   me: () => api('/auth/me', { auth: true }),
+  updateProfile: ({ name, email }) =>
+    api('/auth/profile', { method: 'PATCH', body: { name, email }, auth: true }),
 };
