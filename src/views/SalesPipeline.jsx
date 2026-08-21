@@ -17,8 +17,8 @@ const formatINR = (num) => '₹' + Number(num || 0).toLocaleString('en-IN');
 // Backend endpoints. Pipeline stage / follow-up edits are stored in MongoDB (the SAME
 // `pipelines` collection the Sales Manager app uses) — no localStorage, no hardcoded data.
 // Rows are still derived from EVERY valued lead; the stored docs only carry user edits.
-const LEADS_API = 'http://localhost:5000/api/leads';
-const PIPELINE_API = 'http://localhost:5000/api/pipeline';
+const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
+const PIPELINE_API = 'https://api-salescoordinator.tescomanagement.com/api/pipeline';
 
 // The fields persisted for one opportunity (matches the Pipeline schema on the server).
 const toPayload = (row) => ({

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Filter, User, Phone, MapPin, ChevronLeft, ChevronRight, CalendarCheck2, CalendarClock, CheckCircle2, Flag, X, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
-const APPT_API = 'http://localhost:5000/api/appointments';
+const APPT_API = 'https://api-salescoordinator.tescomanagement.com/api/appointments';
 
 const STATUS_STYLES = {
   Waiting:   { bg: '#FEF3C7', color: '#92400E', label: 'WAITING' },
@@ -95,7 +95,7 @@ const Appointments = () => {
 
   // Load leads so an appointment can be linked to a lead (and logged on its history)
   useEffect(() => {
-    fetch('http://localhost:5000/api/leads')
+    fetch('https://api-salescoordinator.tescomanagement.com/api/leads')
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setLeads(d); })
       .catch((e) => console.error('Failed to load leads:', e));
@@ -108,7 +108,7 @@ const Appointments = () => {
     const stamp = new Date().toLocaleDateString('en-GB') + ', ' + new Date().toLocaleTimeString('en-US', { hour12: false });
     const entry = { timestamp: stamp, message, remark: '' };
     const history = Array.isArray(lead?.history) ? [...lead.history, entry] : [entry];
-    fetch(`http://localhost:5000/api/leads/${leadId}`, {
+    fetch(`https://api-salescoordinator.tescomanagement.com/api/leads/${leadId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ history })
     }).catch((e) => console.error('Failed to update lead history:', e));
   };

@@ -78,7 +78,7 @@ const LeadOverviewCard = ({ title, value, subtitle, icon: Icon, color, bg, borde
   </div>
 );
 
-const API_URL = 'http://localhost:5000/api/leads';
+const API_URL = 'https://api-salescoordinator.tescomanagement.com/api/leads';
 
 const LeadManagement = () => {
   const [leads, setLeads] = useState([]);
@@ -140,9 +140,9 @@ const LeadManagement = () => {
   const [quoteRecords, setQuoteRecords] = useState([]);
   const [projectRecords, setProjectRecords] = useState([]);
   useEffect(() => {
-    fetch('http://localhost:5000/api/appointments').then(r => r.json()).then(d => { if (Array.isArray(d)) setApptRecords(d); }).catch(() => {});
-    fetch('http://localhost:5000/api/quotations').then(r => r.json()).then(d => { if (Array.isArray(d)) setQuoteRecords(d); }).catch(() => {});
-    fetch('http://localhost:5000/api/projects').then(r => r.json()).then(d => { if (Array.isArray(d)) setProjectRecords(d); }).catch(() => {});
+    fetch('https://api-salescoordinator.tescomanagement.com/api/appointments').then(r => r.json()).then(d => { if (Array.isArray(d)) setApptRecords(d); }).catch(() => {});
+    fetch('https://api-salescoordinator.tescomanagement.com/api/quotations').then(r => r.json()).then(d => { if (Array.isArray(d)) setQuoteRecords(d); }).catch(() => {});
+    fetch('https://api-salescoordinator.tescomanagement.com/api/projects').then(r => r.json()).then(d => { if (Array.isArray(d)) setProjectRecords(d); }).catch(() => {});
   }, []);
   // Overview counts are computed below (after the header-filter state is declared) so the
   // "All Managers" dropdown scopes them too.
@@ -569,7 +569,7 @@ const LeadManagement = () => {
       .catch(err => console.error('Failed to delete lead:', err));
     // Delete the matching pipeline opportunity (id derives as OP-<digits of lead id>).
     const opId = `OP-${String(id).replace(/\D/g, '') || id}`;
-    fetch(`http://localhost:5000/api/pipeline/${opId}`, { method: 'DELETE' })
+    fetch(`https://api-salescoordinator.tescomanagement.com/api/pipeline/${opId}`, { method: 'DELETE' })
       .catch(err => console.error('Failed to delete pipeline entry:', err));
     // Drop it from local state so the sync effect posts the reduced set (no resurrect).
     setLeads(leads.filter(l => l.id !== id));
@@ -869,7 +869,7 @@ const LeadManagement = () => {
     localStorage.setItem('crm_quotes', JSON.stringify(updatedQuotes));
 
     // Persist the new quotation to the backend API (so dashboard/Quotations page show it)
-    fetch('http://localhost:5000/api/quotations', {
+    fetch('https://api-salescoordinator.tescomanagement.com/api/quotations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newQuoteObj)

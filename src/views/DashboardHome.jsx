@@ -7,11 +7,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 // --- API endpoints (unchanged backend) ---
-const LEADS_API = 'http://localhost:5000/api/leads';
-const APPTS_API = 'http://localhost:5000/api/appointments';
-const QUOTES_API = 'http://localhost:5000/api/quotations';
-const PROJECTS_API = 'http://localhost:5000/api/projects';
-const PAYMENTS_API = 'http://localhost:5000/api/payments';
+const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
+const APPTS_API = 'https://api-salescoordinator.tescomanagement.com/api/appointments';
+const QUOTES_API = 'https://api-salescoordinator.tescomanagement.com/api/quotations';
+const PROJECTS_API = 'https://api-salescoordinator.tescomanagement.com/api/projects';
+const PAYMENTS_API = 'https://api-salescoordinator.tescomanagement.com/api/payments';
 
 // --- Card colour palette (pastel tints matching the reference design) ---
 const TINTS = {

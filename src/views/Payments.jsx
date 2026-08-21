@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { CheckCircle, Clock, AlertCircle, XCircle, Plus, Calendar, ChevronDown, X, Eye, Trash2, Pencil, Download, Upload, FileText, Bell, Save } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
-const PAYMENTS_API = 'http://localhost:5000/api/payments';
-const LEADS_API = 'http://localhost:5000/api/leads';
+const PAYMENTS_API = 'https://api-salescoordinator.tescomanagement.com/api/payments';
+const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
 const PER_PAGE = 6;
 
 // Sales team — matches the roster used across the app (LeadManagement / Appointments)
@@ -503,7 +503,7 @@ const Payments = () => {
   // Load order-confirmations (projects) so Payment only offers leads whose order is
   // confirmed — strict lifecycle: Order Confirmation → Payment Collection.
   useEffect(() => {
-    const loadProjects = () => fetch('http://localhost:5000/api/projects')
+    const loadProjects = () => fetch('https://api-salescoordinator.tescomanagement.com/api/projects')
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setProjects(d); })
       .catch(() => {});

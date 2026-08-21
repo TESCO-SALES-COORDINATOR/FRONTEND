@@ -3,9 +3,9 @@ import { BarChart3, PieChart, TrendingUp, Users, DollarSign } from 'lucide-react
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell } from 'recharts';
 import { useToast } from '../components/Toast';
 
-const LEADS_API = 'http://localhost:5000/api/leads';
-const QUOTES_API = 'http://localhost:5000/api/quotations';
-const PROJECTS_API = 'http://localhost:5000/api/projects';
+const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
+const QUOTES_API = 'https://api-salescoordinator.tescomanagement.com/api/quotations';
+const PROJECTS_API = 'https://api-salescoordinator.tescomanagement.com/api/projects';
 
 // ── Money helpers ──
 const parseAmount = (val) => {

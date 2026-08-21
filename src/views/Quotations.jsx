@@ -45,7 +45,7 @@ const getQuotationStatusStyle = (status) => {
   return { ...base, backgroundColor: '#E0E7FF', color: '#3730A3' }; // In Preparation
 };
 
-const QUOTES_API = 'http://localhost:5000/api/quotations';
+const QUOTES_API = 'https://api-salescoordinator.tescomanagement.com/api/quotations';
 
 // Highest numeric suffix across the given quotations (base 5000 so the first id is QT-5001).
 const maxQuoteNum = (rows) => rows.reduce((m, q) => {
@@ -80,7 +80,7 @@ const Quotations = () => {
 
   // Load all leads so the Generate Quotation form can offer a Lead ID dropdown
   useEffect(() => {
-    fetch('http://localhost:5000/api/leads')
+    fetch('https://api-salescoordinator.tescomanagement.com/api/leads')
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setLeads(d); })
       .catch((e) => console.error('Failed to load leads:', e));
@@ -89,7 +89,7 @@ const Quotations = () => {
   // Load appointments/visits so we can offer only leads whose VISIT is completed
   // (strict lifecycle: Visit must be completed before a quotation can be uploaded).
   useEffect(() => {
-    fetch('http://localhost:5000/api/appointments')
+    fetch('https://api-salescoordinator.tescomanagement.com/api/appointments')
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setAppts(d); })
       .catch((e) => console.error('Failed to load appointments:', e));
@@ -138,7 +138,7 @@ const Quotations = () => {
       const entry = { timestamp: stamp, message: 'Quotation approved — moved to Order Confirmation stage', remark: '' };
       const history = Array.isArray(lead.history) ? [...lead.history, entry] : [entry];
       setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: 'Order Confirmed', history } : l));
-      fetch(`http://localhost:5000/api/leads/${leadId}`, {
+      fetch(`https://api-salescoordinator.tescomanagement.com/api/leads/${leadId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Order Confirmed', history })
       }).catch(err => console.error('Failed to advance lead to Order Confirmation:', err));
     });
@@ -229,7 +229,7 @@ const Quotations = () => {
         const stamp = new Date().toLocaleDateString('en-GB') + ', ' + new Date().toLocaleTimeString('en-US', { hour12: false });
         const entry = { timestamp: stamp, message: `Quotation ${newId} generated (${formattedAmount}) by ${(JSON.parse(localStorage.getItem('crm_user') || 'null')?.name) || 'Coordinator'}`, remark: newQuote.project || '' };
         const history = Array.isArray(lead.history) ? [...lead.history, entry] : [entry];
-        fetch(`http://localhost:5000/api/leads/${lead.id}`, {
+        fetch(`https://api-salescoordinator.tescomanagement.com/api/leads/${lead.id}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ history })
         }).catch(err => console.error('Failed to update lead history:', err));
       }

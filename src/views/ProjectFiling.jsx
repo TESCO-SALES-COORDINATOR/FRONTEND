@@ -3,8 +3,8 @@ import { Plus, Pencil, Calendar, ChevronDown } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import HandoverForm from '../components/HandoverForm';
 
-const PROJECTS_API = 'http://localhost:5000/api/projects';
-const LEADS_API = 'http://localhost:5000/api/leads';
+const PROJECTS_API = 'https://api-salescoordinator.tescomanagement.com/api/projects';
+const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
 
 // ── Money helpers ──────────────────────────────────────────────
 const parseAmount = (val) => {
@@ -104,7 +104,7 @@ const ProjectFiling = () => {
   // Load quotations (and keep them fresh) so Order Confirm only offers leads whose
   // quotation is APPROVED — strict lifecycle: Quotation Approval → Order Confirmation.
   useEffect(() => {
-    const loadQuotes = () => fetch('http://localhost:5000/api/quotations')
+    const loadQuotes = () => fetch('https://api-salescoordinator.tescomanagement.com/api/quotations')
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setQuotes(d); })
       .catch(() => {});

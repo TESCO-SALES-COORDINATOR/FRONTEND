@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Plus, X, FileText, Calendar, Settings } from 'lucide-react';
 import { useToast } from './Toast';
 
-const PROJECTS_API = 'http://localhost:5000/api/projects';
-const LEADS_API = 'http://localhost:5000/api/leads';
+const PROJECTS_API = 'https://api-salescoordinator.tescomanagement.com/api/projects';
+const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
 
 const parseAmount = (v) => { const n = parseFloat(String(v ?? '').replace(/[^0-9.]/g, '')); return Number.isNaN(n) ? 0 : n; };
 
