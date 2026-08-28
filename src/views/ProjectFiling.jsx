@@ -78,7 +78,7 @@ const ProjectFiling = () => {
     try {
       const res = await fetch(PROJECTS_API);
       const data = await res.json();
-      if (Array.isArray(data)) setProjects(data.map(normalise));
+      if (Array.isArray(data)) setProjects([...data].sort((a, b) => new Date(b.createdAt || b.updatedAt || b.date || 0) - new Date(a.createdAt || a.updatedAt || a.date || 0)).map(normalise));
     } catch (err) {
       console.error('Failed to load projects:', err);
     } finally {

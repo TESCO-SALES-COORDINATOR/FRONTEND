@@ -144,7 +144,7 @@ const SalesPipeline = () => {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      fetch(LEADS_API).then((r) => r.json()).then((d) => { if (!cancelled && Array.isArray(d)) setLeads(d); }).catch(() => {});
+      fetch(LEADS_API).then((r) => r.json()).then((d) => { if (!cancelled && Array.isArray(d)) setLeads([...d].sort((a, b) => new Date(b.createdAt || b.updatedAt || b.date || 0) - new Date(a.createdAt || a.updatedAt || a.date || 0))); }).catch(() => {});
       fetch(PIPELINE_API).then((r) => r.json()).then((d) => { if (!cancelled && Array.isArray(d)) setExtras(d); }).catch(() => {});
     };
     load();

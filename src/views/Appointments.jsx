@@ -79,7 +79,7 @@ const Appointments = () => {
         const data = await res.json();
         // Hide cancelled appointments from the active list (they remain in the DB so the
         // assigned manager still gets a cancellation notification).
-        if (Array.isArray(data)) setAppointments(data.map(normalize).filter(a => a.status !== 'Cancelled' && !a.cancelledAt));
+        if (Array.isArray(data)) setAppointments([...data].sort((a, b) => new Date(b.createdAt || b.updatedAt || b.date || 0) - new Date(a.createdAt || a.updatedAt || a.date || 0)).map(normalize).filter(a => a.status !== 'Cancelled' && !a.cancelledAt));
       } catch (err) {
         console.error('Failed to load appointments:', err);
       } finally {

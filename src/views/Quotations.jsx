@@ -119,10 +119,19 @@ const Quotations = () => {
     load();
   }, []);
 
-  // Sync to API on change (also mirror to localStorage so dashboard/lead pages stay in sync)
+  // Sync to API on change (also mirror to localStorage so dashboard/lead pages stay in sync).
+  // The localStorage copy is LIGHTWEIGHT — base64 file data is stripped out, because a few
+  // uploaded PDFs would otherwise blow the browser's ~5MB localStorage quota and the
+  // resulting QuotaExceededError would crash this page. The write is also guarded so a full
+  // storage never brings the page down.
   useEffect(() => {
     if (!quotesLoaded) return;
-    localStorage.setItem('crm_quotes', JSON.stringify(quotes));
+    try {
+      const lite = quotes.map(({ fileData, ...rest }) => rest);
+      localStorage.setItem('crm_quotes', JSON.stringify(lite));
+    } catch (e) {
+      console.warn('Skipped caching quotations to localStorage:', e && e.message);
+    }
     fetch(`${QUOTES_API}/bulk`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

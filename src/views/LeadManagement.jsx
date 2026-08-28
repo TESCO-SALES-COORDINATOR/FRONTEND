@@ -625,11 +625,21 @@ const LeadManagement = () => {
   // not just the table — selecting a manager shows only that manager's numbers.
   const selMgr = headerFilters.assignTo;
   const byMgr = (m) => selMgr === 'All' || (m || 'Unassigned') === selMgr;
-  const overviewLeads = leads.filter(l => byMgr(l.manager));
+  // Date-range predicate shared by the overview counts AND the leads table, so the KPI
+  // numbers always reflect the calendar range chosen at the top of the page.
+  const inDateRange = (v) => {
+    if (!dateRange.start || !dateRange.end) return true;
+    const t = new Date(v).getTime();
+    if (isNaN(t)) return true; // undated records are never hidden
+    const s = new Date(dateRange.start); s.setHours(0, 0, 0, 0);
+    const e = new Date(dateRange.end); e.setHours(23, 59, 59, 999);
+    return t >= s.getTime() && t <= e.getTime();
+  };
+  const overviewLeads = leads.filter(l => byMgr(l.manager) && inDateRange(l.date || l.createdAt));
   const mgrLeadIds = new Set(overviewLeads.map(l => l.id));
-  const apptFixedCount = apptRecords.filter(a => !/visit/i.test(a.type || '') && byMgr(a.manager)).length;
-  const quotationCount = quoteRecords.filter(q => selMgr === 'All' || mgrLeadIds.has(q.leadId)).length;
-  const orderConfirmedCount = projectRecords.filter(p => selMgr === 'All' || mgrLeadIds.has(p.leadId) || (p.salesperson || '') === selMgr || (p.manager || '') === selMgr).length;
+  const apptFixedCount = apptRecords.filter(a => !/visit/i.test(a.type || '') && byMgr(a.manager) && inDateRange(a.date || a.createdAt)).length;
+  const quotationCount = quoteRecords.filter(q => (selMgr === 'All' || mgrLeadIds.has(q.leadId)) && inDateRange(q.date || q.createdAt)).length;
+  const orderConfirmedCount = projectRecords.filter(p => (selMgr === 'All' || mgrLeadIds.has(p.leadId) || (p.salesperson || '') === selMgr || (p.manager || '') === selMgr) && inDateRange(p.date || p.createdAt)).length;
 
   const toggleFilter = (filterName) => {
     if (statusFilter === filterName) {
@@ -639,17 +649,7 @@ const LeadManagement = () => {
     }
   };
 
-  const leadsInDateRange = leads.filter(l => {
-    if (dateRange.start && dateRange.end) {
-      const leadDateObj = new Date(l.date);
-      const startObj = new Date(dateRange.start);
-      startObj.setHours(0, 0, 0, 0);
-      const endObj = new Date(dateRange.end);
-      endObj.setHours(23, 59, 59, 999);
-      if (leadDateObj < startObj || leadDateObj > endObj) return false;
-    }
-    return true;
-  });
+  const leadsInDateRange = leads.filter(l => inDateRange(l.date || l.createdAt));
 
   const filteredLeads = leadsInDateRange.filter(l => {
     if (searchQuery.trim() !== '') {
@@ -701,11 +701,10 @@ const LeadManagement = () => {
 
     return true;
   }).sort((a, b) => {
-    // Newest first — by date, then by lead id as a tie-breaker
-    const da = new Date(a.date || a.createdAt || 0).getTime();
-    const db = new Date(b.date || b.createdAt || 0).getTime();
-    if (!isNaN(da) && !isNaN(db) && da !== db) return db - da;
-    return String(b.id || '').localeCompare(String(a.id || ''), undefined, { numeric: true });
+    // Newest first — by the real backend create/update time (never by id or name)
+    const da = new Date(a.createdAt || a.updatedAt || a.date || 0).getTime();
+    const db = new Date(b.createdAt || b.updatedAt || b.date || 0).getTime();
+    return (isNaN(db) ? 0 : db) - (isNaN(da) ? 0 : da);
   });
 
   const getFormattedTimestamp = () => {
@@ -872,7 +871,13 @@ const LeadManagement = () => {
       fileName: null
     };
     const updatedQuotes = [...existingQuotes, newQuoteObj];
-    localStorage.setItem('crm_quotes', JSON.stringify(updatedQuotes));
+    // Strip any base64 file data and guard the write so a full localStorage quota can never
+    // throw here (a few uploaded PDFs would otherwise exceed the ~5MB limit).
+    try {
+      localStorage.setItem('crm_quotes', JSON.stringify(updatedQuotes.map(({ fileData, ...rest }) => rest)));
+    } catch (e) {
+      console.warn('Skipped caching quotations to localStorage:', e && e.message);
+    }
 
     // Persist the new quotation to the backend API (so dashboard/Quotations page show it)
     fetch('https://api-salescoordinator.tescomanagement.com/api/quotations', {
