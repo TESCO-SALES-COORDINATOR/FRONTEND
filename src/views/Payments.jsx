@@ -138,7 +138,7 @@ const selectStyle = {
 const emptyForm = {
   id: '', leadId: '', customer: '', orderValue: '', amountCollected: '',
   pendingPayments: '', upcomingDues: '', overduePayments: '', invoiceValue: '', dueDate: '',
-  method: '', transactionId: '', paymentDate: '', notes: '', manager: '',
+  method: '', transactionId: '', paymentDate: '', notes: '', manager: '', cashPaidBy: '',
 };
 
 // ── Payment Collection detail drawer ─────────────────────────────
@@ -328,6 +328,16 @@ const PaymentDrawer = ({
                     <div style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--text-main)' }}>{record.method || '—'}</div>
                   )}
                 </div>
+                {((isEdit ? editForm?.method : record.method) === 'Cash') && (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>Cash Received From (Paid By)</div>
+                    {isEdit ? (
+                      <input value={editForm?.cashPaidBy || ''} onChange={(e) => upd('cashPaidBy', e.target.value)} type="text" placeholder="Name of person who paid the cash" style={smallInput} />
+                    ) : (
+                      <div style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--text-main)' }}>{record.cashPaidBy || '—'}</div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -478,7 +488,7 @@ const Payments = () => {
     try {
       const res = await fetch(PAYMENTS_API);
       const data = await res.json();
-      if (Array.isArray(data)) setPayments(data);
+      if (Array.isArray(data)) setPayments([...data].sort((a, b) => new Date(b.createdAt || b.paymentDate || b.dueDate || 0) - new Date(a.createdAt || a.paymentDate || a.dueDate || 0)));
     } catch (err) {
       console.error('Failed to load payments:', err);
     } finally {
@@ -645,6 +655,7 @@ const Payments = () => {
       dueDate: form.dueDate || '',
       method: (form.method || '').trim(),
       transactionId: (form.transactionId || '').trim(),
+      cashPaidBy: form.method === 'Cash' ? (form.cashPaidBy || '').trim() : '',
       paymentDate: form.paymentDate || '',
       notes: (form.notes || '').trim(),
     };
@@ -727,6 +738,7 @@ const Payments = () => {
       invoiceValue: num(p.invoiceValue),
       dueDate: p.dueDate || '',
       method: p.method || '',
+      cashPaidBy: p.cashPaidBy || '',
       status: deriveStatus(p),
     };
   };
@@ -778,6 +790,7 @@ const Payments = () => {
       invoiceValue: parseAmount(editForm.invoiceValue),
       dueDate: editForm.dueDate || '',
       method: (editForm.method || '').trim(),
+      cashPaidBy: editForm.method === 'Cash' ? (editForm.cashPaidBy || '').trim() : '',
       status: editForm.status || '',
       clientName: (editForm.clientName || '').trim(),
       projectLocation: (editForm.projectLocation || '').trim(),
@@ -1236,6 +1249,14 @@ const Payments = () => {
                   <input value={form.transactionId} onChange={(e) => setForm({ ...form, transactionId: e.target.value })} type="text" placeholder="e.g. TXN123456 / CHQ-0012" style={inputStyle} />
                 </div>
               </div>
+              {form.method === 'Cash' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.1rem' }}>
+                  <div>
+                    <label style={labelStyle}>Cash Received From (Paid By)</label>
+                    <input value={form.cashPaidBy} onChange={(e) => setForm({ ...form, cashPaidBy: e.target.value })} type="text" placeholder="Name of the person who paid the cash" style={inputStyle} />
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.1rem' }}>
                 <div>
                   <label style={labelStyle}>Payment Date</label>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, ArrowRight, ArrowLeft, Building2, ClipboardList, CalendarDays, IndianRupee, PenLine, Plus, Trash2 } from 'lucide-react';
+import { api } from '../api/client';
 
 const STEPS = ['Basic Info', 'Project Details', 'Quotations', 'Order Confirm', 'Review'];
 
@@ -17,7 +18,7 @@ const QUOTATION_TYPES = ['Initial Quotation', 'Revised Quotation', 'Final Quotat
 const emptyForm = {
   // Basic Info
   customerName: '', companyName: '', phone: '', email: '',
-  leadSource: 'WEBSITE ENQUIRY', service: 'PEB Building',
+  leadSource: 'WEBSITE ENQUIRY', service: 'PEB Building', otherService: '',
   projectLocation: '', assignedManager: '', expectedTimeline: '',
   followUpDate: '', status: 'New',
   // Project Details
@@ -164,6 +165,7 @@ const YesNo = ({ label, value, onChange }) => (
 const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(emptyForm);
+  const [managers, setManagers] = useState([]);
 
   const isEditing = Boolean(editLead);
 
@@ -173,14 +175,54 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
     setForm(editLead ? leadToForm(editLead) : emptyForm);
   }, [isOpen, editLead]);
 
+  // Load the list of Sales Managers for the "Assigned Manager" dropdown.
+  // Prefer the dedicated endpoint; if unavailable, derive the names from existing leads.
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    const fromLeads = () => api('/leads').then((leads) => {
+      const names = [...new Set((Array.isArray(leads) ? leads : [])
+        .map((l) => (l.manager || '').trim())
+        .filter((n) => n && n.toLowerCase() !== 'unassigned'))].sort();
+      if (active) setManagers(names);
+    }).catch(() => {});
+    api('/auth/managers').then((rows) => {
+      const names = (Array.isArray(rows) ? rows : []).map((m) => m.name).filter(Boolean).sort();
+      if (active) { names.length ? setManagers(names) : fromLeads(); }
+    }).catch(fromLeads);
+    return () => { active = false; };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
+  // ── Payment-terms auto-calculation ──
+  const num = (v) => { const n = parseFloat(String(v ?? '').replace(/[^\d.]/g, '')); return isNaN(n) ? 0 : n; };
   // Milestone helpers
   const setMilestone = (idx, key, val) => setForm((f) => ({
     ...f, ocMilestones: f.ocMilestones.map((m, i) => (i === idx ? { ...m, [key]: val } : m)),
   }));
+  // Percentage → auto-fill Value from the Quoted Price
+  const setMilestonePct = (idx, pct) => setForm((f) => {
+    const price = num(f.ocQuotedPrice);
+    return { ...f, ocMilestones: f.ocMilestones.map((m, i) => i === idx
+      ? { ...m, percentage: pct, value: (price && pct !== '') ? String(Math.round(price * num(pct) / 100)) : m.value }
+      : m) };
+  });
+  // Value → auto-fill Percentage from the Quoted Price
+  const setMilestoneVal = (idx, val) => setForm((f) => {
+    const price = num(f.ocQuotedPrice);
+    return { ...f, ocMilestones: f.ocMilestones.map((m, i) => i === idx
+      ? { ...m, value: val, percentage: (price && val !== '') ? String(+((num(val) / price) * 100).toFixed(2)) : m.percentage }
+      : m) };
+  });
+  // Quoted Price change → recompute every milestone's Value from its Percentage
+  const setQuotedPrice = (val) => setForm((f) => {
+    const price = num(val);
+    return { ...f, ocQuotedPrice: val, ocMilestones: f.ocMilestones.map((m) =>
+      (m.percentage !== '' && price) ? { ...m, value: String(Math.round(price * num(m.percentage) / 100)) } : m) };
+  });
   const addMilestone = () => setForm((f) => ({ ...f, ocMilestones: [...f.ocMilestones, { term: '', percentage: '', value: '' }] }));
   const removeMilestone = (idx) => setForm((f) => ({ ...f, ocMilestones: f.ocMilestones.filter((_, i) => i !== idx) }));
 
@@ -205,12 +247,14 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
     setStep(num);
   };
 
-  const canProceed = step !== 1 || (form.customerName.trim() && form.phone.trim() && form.leadSource && form.service && form.status);
+  const canProceed = step !== 1 || (form.customerName.trim() && form.phone.trim() && form.leadSource && form.service && (form.service !== 'Other Service' || form.otherService.trim()) && form.status);
 
   const next = () => goToStep(Math.min(5, step + 1));
   const back = () => setStep((s) => Math.max(1, s - 1));
 
   const submit = () => {
+    const effectiveService = (form.service === 'Other Service' && form.otherService.trim())
+      ? form.otherService.trim() : form.service;
     onSave({
       _editId: editLead ? editLead.id : undefined,
       name: form.customerName,
@@ -218,7 +262,7 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
       phone: form.phone,
       email: form.email,
       source: form.leadSource,
-      projectType: form.service,
+      projectType: effectiveService,
       location: form.projectLocation,
       manager: form.assignedManager || 'Unassigned',
       expectedTimeline: form.expectedTimeline,
@@ -303,11 +347,22 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
                     {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </Field>
+                {form.service === 'Other Service' && (
+                  <Field label="Specify Service" required>
+                    <input style={inputStyle} placeholder="Type the service name" value={form.otherService} onChange={(e) => set('otherService', e.target.value)} />
+                  </Field>
+                )}
                 <Field label="Project Location">
                   <input style={inputStyle} placeholder="Enter project location" value={form.projectLocation} onChange={(e) => set('projectLocation', e.target.value)} />
                 </Field>
                 <Field label="Assigned Manager" required>
-                  <input style={inputStyle} placeholder="Enter executive name" value={form.assignedManager} onChange={(e) => set('assignedManager', e.target.value)} />
+                  <select style={inputStyle} value={form.assignedManager} onChange={(e) => set('assignedManager', e.target.value)}>
+                    <option value="">Select Manager</option>
+                    {managers.map((m) => <option key={m} value={m}>{m}</option>)}
+                    {form.assignedManager && !managers.includes(form.assignedManager) && (
+                      <option value={form.assignedManager}>{form.assignedManager}</option>
+                    )}
+                  </select>
                 </Field>
                 <Field label="Expected Timeline">
                   <select style={inputStyle} value={form.expectedTimeline} onChange={(e) => set('expectedTimeline', e.target.value)}>
@@ -485,7 +540,7 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
 
               <SectionCard icon={IndianRupee} title="4. Pricing & Payment Terms">
                 <Field label="Quoted Price" required>
-                  <input style={{ ...inputStyle, marginBottom: '1.5rem' }} placeholder="₹ Amount" value={form.ocQuotedPrice} onChange={(e) => set('ocQuotedPrice', e.target.value)} />
+                  <input style={{ ...inputStyle, marginBottom: '1.5rem' }} placeholder="₹ Amount" value={form.ocQuotedPrice} onChange={(e) => setQuotedPrice(e.target.value)} />
                 </Field>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <label style={labelStyle}>Payment Terms Schedule</label>
@@ -499,10 +554,10 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
                       <input style={inputStyle} placeholder="e.g. Advance Payment" value={m.term} onChange={(e) => setMilestone(idx, 'term', e.target.value)} />
                     </Field>
                     <Field label="Percentage (%)">
-                      <input style={inputStyle} placeholder="%" value={m.percentage} onChange={(e) => setMilestone(idx, 'percentage', e.target.value)} />
+                      <input style={inputStyle} placeholder="%" value={m.percentage} onChange={(e) => setMilestonePct(idx, e.target.value)} />
                     </Field>
                     <Field label="Value (₹)">
-                      <input style={inputStyle} placeholder="₹ Amount" value={m.value} onChange={(e) => setMilestone(idx, 'value', e.target.value)} />
+                      <input style={inputStyle} placeholder="₹ Amount" value={m.value} onChange={(e) => setMilestoneVal(idx, e.target.value)} />
                     </Field>
                     <button type="button" onClick={() => removeMilestone(idx)} disabled={form.ocMilestones.length === 1}
                       title="Remove milestone"

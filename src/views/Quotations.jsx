@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { FileText, Download, Eye, Plus, CheckCircle, Clock, X, ThumbsUp, Send, Upload, Trash2 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
+// Newest-first: order records by creation time, then by id (numeric-aware) as a tie-breaker.
+const byNewest = (a, b) => {
+  const da = new Date(a.createdAt || a.date || 0).getTime();
+  const db = new Date(b.createdAt || b.date || 0).getTime();
+  if (!isNaN(da) && !isNaN(db) && da !== db) return db - da;
+  return String(b.id || '').localeCompare(String(a.id || ''), undefined, { numeric: true });
+};
+
 const getApprovalStatusStyle = (status) => {
   const base = {
     padding: '0.35rem 1.6rem 0.35rem 0.75rem',
@@ -101,7 +109,7 @@ const Quotations = () => {
       try {
         const res = await fetch(QUOTES_API);
         const data = await res.json();
-        if (Array.isArray(data)) setQuotes(dedupeIds(data));
+        if (Array.isArray(data)) setQuotes(dedupeIds(data).sort(byNewest));
       } catch (err) {
         console.error('Failed to load quotations:', err);
       } finally {
@@ -148,10 +156,20 @@ const Quotations = () => {
     leadId: '', client: '', project: '', amount: '', gst: '', quotationType: 'Initial Quotation', approvalStatus: 'Pending', quotationStatus: 'In Preparation', revision: 'Rev 0', fileName: null, fileData: null
   });
 
+  // Only PDF quotations are accepted. Images (or any non-PDF) are rejected so a
+  // quotation can never bypass the Sales Head's approval by being uploaded as a picture.
+  const isPdfFile = (file) => file && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || ''));
+
   // Read the chosen PDF into the new-quote state (attached on Upload)
   const handleModalFileChange = (event) => {
     const file = event.target.files[0];
     if (!file) { setNewQuote(prev => ({ ...prev, fileName: null, fileData: null })); return; }
+    if (!isPdfFile(file)) {
+      addToast('Only PDF files are allowed. Please upload the quotation as a PDF.', 'error');
+      event.target.value = '';
+      setNewQuote(prev => ({ ...prev, fileName: null, fileData: null }));
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const tooBig = file.size > 5 * 1024 * 1024;
@@ -202,6 +220,11 @@ const Quotations = () => {
       addToast('This lead has no completed visit yet — complete the site visit first.', 'error');
       return;
     }
+    // PDF is mandatory — a quotation cannot be created without a PDF document.
+    if (!newQuote.fileName) {
+      addToast('A PDF quotation file is required before uploading.', 'error');
+      return;
+    }
     const active = leadActiveQuote(newQuote.leadId);
     if (active) {
       addToast(`This lead already has a ${String(active.approvalStatus).toLowerCase()} quotation (${active.id}). A new one is allowed only after it is rejected.`, 'error');
@@ -213,14 +236,14 @@ const Quotations = () => {
     const formattedAmount = newQuote.amount.startsWith('₹') ? newQuote.amount : `₹${newQuote.amount}`;
     const formattedGst = newQuote.gst ? (newQuote.gst.startsWith('₹') ? newQuote.gst : `₹${newQuote.gst}`) : '';
 
-    setQuotes([...quotes, {
+    setQuotes([{
       ...newQuote,
       id: newId,
       amount: formattedAmount,
       gst: formattedGst,
       // A file attached at upload time means the quotation is prepared
       quotationStatus: newQuote.fileName ? 'Prepared' : newQuote.quotationStatus
-    }]);
+    }, ...quotes]);
 
     // Record the quotation on the lead's shared history (visible to manager + coordinator)
     if (newQuote.leadId) {
@@ -252,6 +275,11 @@ const Quotations = () => {
   const handleFileUpload = (id, event) => {
     const file = event.target.files[0];
     if (!file) return;
+    if (!isPdfFile(file)) {
+      addToast('Only PDF files are allowed. Please upload the quotation as a PDF.', 'error');
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const tooBig = file.size > 5 * 1024 * 1024;
@@ -489,9 +517,10 @@ const Quotations = () => {
                       ) : (
                         <div style={{ position: 'relative' }}>
                           <input 
-                            type="file" 
+                            type="file"
+                            accept="application/pdf,.pdf"
                             id={`file-input-${quote.id}`}
-                            onChange={(e) => handleFileUpload(quote.id, e)} 
+                            onChange={(e) => handleFileUpload(quote.id, e)}
                             style={{ display: 'none' }} 
                           />
                           <button 

@@ -101,6 +101,13 @@ const DashboardHome = () => {
     };
   }, []);
 
+  /* ── Date range filter (drives EVERY dashboard metric below) ── */
+  const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
+  const iso = (d) => d.toISOString().split('T')[0];
+  const [dateRange, setDateRange] = useState({ start: iso(daysAgo(30)), end: iso(new Date()) });
+  const dstr = (v) => { if (!v) return ''; const d = new Date(v); return isNaN(d.getTime()) ? String(v).slice(0, 10) : iso(d); };
+  const inRange = (v) => { const f = dstr(v); if (!f) return true; return (!dateRange.start || f >= dateRange.start) && (!dateRange.end || f <= dateRange.end); };
+
   /* ── Manager filter ── */
   // Only the four real sales managers should appear in the dropdown (no stray/test names)
   const SALES_TEAM = ['Azar Abdullah A', 'Praveenraja P', 'Suresh P', 'Agsal A'];
@@ -108,14 +115,16 @@ const DashboardHome = () => {
   const managerList = SALES_TEAM;
   const byManager = (arr) => selectedManager === 'All' ? arr : arr.filter(x => x.manager === selectedManager);
 
-  const leads = byManager(allLeads);
-  const appointments = byManager(allAppointments);
+  const leads = byManager(allLeads).filter(l => inRange(l.date || l.createdAt));
+  const appointments = byManager(allAppointments).filter(a => inRange(a.date || a.createdAt));
 
   // Scope quotations & projects to the selected manager (via their leads) so EVERY dashboard
   // count reflects only that manager's data when a manager is chosen.
   const dashLeadIds = new Set(leads.map(l => l.id));
-  const scopedQuotes = selectedManager === 'All' ? liveQuotes : liveQuotes.filter(q => dashLeadIds.has(q.leadId));
-  const scopedProjects = selectedManager === 'All' ? liveProjects : liveProjects.filter(p => dashLeadIds.has(p.leadId) || (p.salesperson || '') === selectedManager || (p.manager || '') === selectedManager);
+  const dQuotes = liveQuotes.filter(q => inRange(q.date || q.createdAt));
+  const dProjects = liveProjects.filter(p => inRange(p.date || p.createdAt));
+  const scopedQuotes = selectedManager === 'All' ? dQuotes : dQuotes.filter(q => dashLeadIds.has(q.leadId));
+  const scopedProjects = selectedManager === 'All' ? dProjects : dProjects.filter(p => dashLeadIds.has(p.leadId) || (p.salesperson || '') === selectedManager || (p.manager || '') === selectedManager);
 
   /* ── Leads Overview counts ── */
   const has = (s, kw) => (s || '').toLowerCase().includes(kw);
@@ -163,19 +172,17 @@ const DashboardHome = () => {
     : n >= 1e3 ? '₹' + Math.round(n / 1e3) + 'K'
     : '₹' + Math.round(n);
   // Scope payments to the selected manager (by the payment's own manager, or via its lead).
+  const dPayments = livePayments.filter(p => inRange(p.date || p.createdAt));
   const scopedPayments = selectedManager === 'All'
-    ? livePayments
-    : livePayments.filter(p => (p.manager || '') === selectedManager || dashLeadIds.has(p.leadId));
+    ? dPayments
+    : dPayments.filter(p => (p.manager || '') === selectedManager || dashLeadIds.has(p.leadId));
   const sumField = (key) => scopedPayments.reduce((s, p) => s + (Number(p[key]) || 0), 0);
   const collectedTotal = sumField('amountCollected');
   const upcomingTotal = sumField('upcomingDues');
   const pendingPayTotal = sumField('pendingPayments');
   const overdueTotal = sumField('overduePayments');
 
-  /* ── Date range picker (visual, matches reference) ── */
-  const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
-  const iso = (d) => d.toISOString().split('T')[0];
-  const [dateRange, setDateRange] = useState({ start: iso(daysAgo(30)), end: iso(new Date()) });
+  /* ── Date range picker UI state (dateRange declared above) ── */
   const [selectedPreset, setSelectedPreset] = useState('Last 30 Days');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [rangeSelectionState, setRangeSelectionState] = useState('start');

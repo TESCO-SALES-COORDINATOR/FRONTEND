@@ -700,6 +700,12 @@ const LeadManagement = () => {
     }
 
     return true;
+  }).sort((a, b) => {
+    // Newest first — by date, then by lead id as a tie-breaker
+    const da = new Date(a.date || a.createdAt || 0).getTime();
+    const db = new Date(b.date || b.createdAt || 0).getTime();
+    if (!isNaN(da) && !isNaN(db) && da !== db) return db - da;
+    return String(b.id || '').localeCompare(String(a.id || ''), undefined, { numeric: true });
   });
 
   const getFormattedTimestamp = () => {
