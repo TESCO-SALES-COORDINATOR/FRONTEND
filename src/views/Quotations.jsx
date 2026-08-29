@@ -167,7 +167,7 @@ const Quotations = () => {
   }, [quotes, quotesLoaded, leads]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newQuote, setNewQuote] = useState({
-    leadId: '', client: '', project: '', amount: '', gst: '', quotationType: 'Initial Quotation', approvalStatus: 'Pending', quotationStatus: 'In Preparation', revision: 'Rev 0', fileName: null, fileData: null
+    leadId: '', client: '', project: '', amount: '', gst: '', priority: 'Medium', quotationType: 'Initial Quotation', approvalStatus: 'Pending', quotationStatus: 'In Preparation', revision: 'Rev 0', fileName: null, fileData: null
   });
 
   // Only PDF quotations are accepted. Images (or any non-PDF) are rejected so a
@@ -672,6 +672,18 @@ const Quotations = () => {
                 <div>
                   <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Upload File (PDF)</label>
                   <input type="file" accept="application/pdf,.pdf" onChange={handleModalFileChange} style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.85rem', backgroundColor: 'var(--surface-color)', color: 'var(--text-muted)', cursor: 'pointer' }} />
+                </div>
+              </div>
+
+              {/* Row 4: Priority */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Priority</label>
+                  <select value={newQuote.priority} onChange={(e) => setNewQuote({ ...newQuote, priority: e.target.value })} style={{ width: '100%', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', outline: 'none', fontSize: '0.9rem' }}>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
                 </div>
               </div>
 

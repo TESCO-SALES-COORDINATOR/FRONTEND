@@ -62,7 +62,7 @@ const Sidebar = () => {
           SalesCRM
         </h2>
         <div style={{ color: '#8A8FC5', fontSize: '0.75rem', fontWeight: '500', marginTop: '0.25rem' }}>
-          Construction Workflow
+          Tesco Structures
         </div>
       </div>
 

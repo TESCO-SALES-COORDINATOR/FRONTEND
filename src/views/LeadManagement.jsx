@@ -275,16 +275,41 @@ const LeadManagement = () => {
     setIsModalOpen(true);
   };
 
-  // Convert any stored follow-up value into a YYYY-MM-DD value for the date input
-  const toDateInputValue = (v) => {
-    if (!v || typeof v !== 'string') return '';
+  // Parse any stored follow-up value into { dPart:'YYYY-MM-DD', tPart:'HH:mm' } (tPart may be '')
+  const parseFollowUp = (v) => {
+    if (!v || typeof v !== 'string') return null;
     const s = v.trim();
-    if (s === 'No Date' || s === 'Pending' || s === '') return '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    const m = s.match(/(\d{2})-(\d{2})-(\d{4})/);
-    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+    if (s === 'No Date' || s === 'Pending' || s === '') return null;
+    let dPart = '', tPart = '', m;
+    if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/))) { dPart = `${m[1]}-${m[2]}-${m[3]}`; tPart = `${m[4]}:${m[5]}`; }
+    else if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/))) { dPart = `${m[1]}-${m[2]}-${m[3]}`; }
+    else if ((m = s.match(/(\d{2})-(\d{2})-(\d{4})[,\s]+(\d{1,2}):(\d{2})\s*([AaPp][Mm])/))) { let h = parseInt(m[4], 10); const ap = m[6].toUpperCase(); if (ap === 'PM' && h !== 12) h += 12; if (ap === 'AM' && h === 12) h = 0; dPart = `${m[3]}-${m[2]}-${m[1]}`; tPart = `${String(h).padStart(2, '0')}:${m[5]}`; }
+    else if ((m = s.match(/(\d{2})-(\d{2})-(\d{4})[,\s]+(\d{2}):(\d{2})/))) { dPart = `${m[3]}-${m[2]}-${m[1]}`; tPart = `${m[4]}:${m[5]}`; }
+    else if ((m = s.match(/(\d{2})-(\d{2})-(\d{4})/))) { dPart = `${m[3]}-${m[2]}-${m[1]}`; }
+    else { const d = new Date(s); if (!isNaN(d.getTime())) { dPart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; tPart = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; } }
+    if (!dPart) return null;
+    return { dPart, tPart };
+  };
+
+  // Convert any stored follow-up value into a datetime-local value (YYYY-MM-DDTHH:mm)
+  const toDateInputValue = (v) => {
+    const p = parseFollowUp(v);
+    if (!p) return '';
+    return `${p.dPart}T${p.tPart || '09:00'}`;
+  };
+
+  // Display a follow-up value as "DD-MM-YYYY, hh:mm AM/PM" (date only when no time was set)
+  const fmtFollowUp = (v) => {
+    const p = parseFollowUp(v);
+    if (!p) return '';
+    const [y, mo, d] = p.dPart.split('-');
+    const dateStr = `${d}-${mo}-${y}`;
+    if (!p.tPart) return dateStr;
+    let h = parseInt(p.tPart.slice(0, 2), 10);
+    const mm = p.tPart.slice(3, 5);
+    const ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12; if (h === 0) h = 12;
+    return `${dateStr}, ${String(h).padStart(2, '0')}:${mm} ${ap}`;
   };
 
   // Inline follow-up date edit from the table column
@@ -992,7 +1017,9 @@ const LeadManagement = () => {
 
   const handleAddLead = (e) => {
     e.preventDefault();
-    const maxIdNum = leads.reduce((max, l) => { const n = parseInt((l.id || '').replace(/\D/g, ''), 10); return isNaN(n) ? max : Math.max(max, n); }, 0);
+    // Only count the real sequential LD-#### ids; ignore any legacy timestamp ids (13-digit)
+    // so the sequence continues correctly (…LD-0017 -> LD-0018) instead of jumping to a huge number.
+    const maxIdNum = leads.reduce((max, l) => { const n = parseInt((l.id || '').replace(/\D/g, ''), 10); return (isNaN(n) || n >= 1000000) ? max : Math.max(max, n); }, 0);
     const newId = `LD-${String(maxIdNum + 1).padStart(4, '0')}`;
     const formattedTime = getFormattedTimestamp();
     
@@ -1101,7 +1128,9 @@ const LeadManagement = () => {
     }
 
     // ----- CREATE MODE: add a brand-new lead -----
-    const maxIdNum = leads.reduce((max, l) => { const n = parseInt((l.id || '').replace(/\D/g, ''), 10); return isNaN(n) ? max : Math.max(max, n); }, 0);
+    // Only count the real sequential LD-#### ids; ignore any legacy timestamp ids (13-digit)
+    // so the sequence continues correctly (…LD-0017 -> LD-0018) instead of jumping to a huge number.
+    const maxIdNum = leads.reduce((max, l) => { const n = parseInt((l.id || '').replace(/\D/g, ''), 10); return (isNaN(n) || n >= 1000000) ? max : Math.max(max, n); }, 0);
     const newId = `LD-${String(maxIdNum + 1).padStart(4, '0')}`;
 
     const leadToAdd = {
@@ -1630,7 +1659,8 @@ const LeadManagement = () => {
                 </td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                   <input
-                    type="date"
+                    type="datetime-local"
+                    title={fmtFollowUp(lead.followUp)}
                     value={toDateInputValue(lead.followUp)}
                     onChange={(e) => updateLeadFollowUp(lead.id, e.target.value)}
                     style={{
