@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Download, Eye, Plus, CheckCircle, Clock, X, ThumbsUp, Send, Upload, Trash2 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
@@ -124,6 +124,7 @@ const Quotations = () => {
   // uploaded PDFs would otherwise blow the browser's ~5MB localStorage quota and the
   // resulting QuotaExceededError would crash this page. The write is also guarded so a full
   // storage never brings the page down.
+  const initialSyncRef = useRef(true);
   useEffect(() => {
     if (!quotesLoaded) return;
     try {
@@ -132,6 +133,10 @@ const Quotations = () => {
     } catch (e) {
       console.warn('Skipped caching quotations to localStorage:', e && e.message);
     }
+    // Don't re-POST the whole collection back on the very first load — the data just came
+    // FROM the server, so re-uploading it (including base64 PDFs) is wasteful and can hang
+    // the page. Only sync to /bulk after a genuine user change.
+    if (initialSyncRef.current) { initialSyncRef.current = false; return; }
     fetch(`${QUOTES_API}/bulk`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -360,23 +365,41 @@ const Quotations = () => {
     win.document.write(buildQuotationHtml(q, autoPrint));
     win.document.close();
   };
+  // The list endpoint no longer ships the heavy base64 fileData (it made the response huge and
+  // slow). Fetch the file for a single quotation on demand from GET /quotations/:id.
+  const fetchFileData = async (q) => {
+    if (q.fileData) return q.fileData;
+    if (!q.id) return null;
+    try {
+      const res = await fetch(`${QUOTES_API}/${q.id}`);
+      if (!res.ok) return null;
+      const full = await res.json();
+      return full && full.fileData ? full.fileData : null;
+    } catch { return null; }
+  };
   // Preview/Download show the actual uploaded document when one exists; otherwise the generated quotation.
   // View shows ONLY the actual uploaded document (no system-generated fallback).
-  const handlePreview = (q) => {
-    if (q.fileData) {
-      const w = window.open('', '_blank');
-      if (!w) { addToast('Please allow pop-ups to preview the document.', 'warning'); return; }
-      w.document.write(`<title>${q.fileName || 'Quotation'}</title><iframe src="${q.fileData}" style="border:0;width:100vw;height:100vh"></iframe>`);
-      w.document.close();
-      return;
+  const handlePreview = async (q) => {
+    if (!q.fileName) { addToast('No file has been uploaded for this quotation yet.', 'warning'); return; }
+    // Open the window synchronously (inside the click) so pop-up blockers allow it, then fill it.
+    const w = window.open('', '_blank');
+    if (!w) { addToast('Please allow pop-ups to preview the document.', 'warning'); return; }
+    w.document.write('<title>Loading…</title><p style="font-family:sans-serif;padding:24px;color:#475569">Loading document…</p>');
+    const fileData = await fetchFileData(q);
+    w.document.open();
+    if (fileData) {
+      w.document.write(`<title>${q.fileName || 'Quotation'}</title><iframe src="${fileData}" style="border:0;width:100vw;height:100vh"></iframe>`);
+    } else {
+      w.document.write(`<title>Unavailable</title><p style="font-family:sans-serif;padding:24px;color:#475569">"${q.fileName}" isn't available — please re-upload the file.</p>`);
     }
-    addToast(q.fileName ? `"${q.fileName}" isn't available to preview — please re-upload the file.` : 'No file has been uploaded for this quotation yet.', 'warning');
+    w.document.close();
   };
   // Download gives back exactly the uploaded file (no system-generated fallback).
-  const handleExportPdf = (q) => {
-    if (q.fileData) {
+  const handleExportPdf = async (q) => {
+    const fileData = q.fileName ? await fetchFileData(q) : null;
+    if (fileData) {
       const a = document.createElement('a');
-      a.href = q.fileData;
+      a.href = fileData;
       a.download = q.fileName || 'quotation';
       document.body.appendChild(a); a.click(); a.remove();
       return;

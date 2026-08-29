@@ -103,7 +103,9 @@ const DashboardHome = () => {
 
   /* ── Date range filter (drives EVERY dashboard metric below) ── */
   const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
-  const iso = (d) => d.toISOString().split('T')[0];
+  // Local-time YYYY-MM-DD (never toISOString — that shifts to UTC and moves IST dates back a day,
+  // which would drop "today" records from a single-day filter)
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const [dateRange, setDateRange] = useState({ start: iso(daysAgo(30)), end: iso(new Date()) });
   const dstr = (v) => { if (!v) return ''; const d = new Date(v); return isNaN(d.getTime()) ? String(v).slice(0, 10) : iso(d); };
   const inRange = (v) => { const f = dstr(v); if (!f) return true; return (!dateRange.start || f >= dateRange.start) && (!dateRange.end || f <= dateRange.end); };
