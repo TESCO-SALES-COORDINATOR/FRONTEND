@@ -1727,9 +1727,6 @@ const LeadManagement = () => {
                     <button title="Download" onClick={(e) => { e.stopPropagation(); downloadLead(lead); }} style={{ background: '#DCFCE7', border: 'none', color: '#166534', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                       <Download size={12} />
                     </button>
-                    <button title="Delete" onClick={() => setDeleteTarget(lead)} style={{ background: '#FEE2E2', border: 'none', color: 'var(--danger-color, #991B1B)', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                      <Trash2 size={12} />
-                    </button>
                   </div>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', maxWidth: '120px' }} onClick={(e) => e.stopPropagation()}>
@@ -1771,31 +1768,6 @@ const LeadManagement = () => {
         onSave={handleWizardSave}
       />
 
-      {/* Delete confirmation popup */}
-      {deleteTarget && (
-        <div
-          style={{
-            position: 'fixed', inset: 0,
-            backgroundColor: 'rgba(15,23,42,0.55)', zIndex: 300,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem'
-          }}
-          onClick={() => setDeleteTarget(null)}
-        >
-          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', padding: '1.75rem', textAlign: 'center' }}>
-            <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
-              <Trash2 size={24} color="#DC2626" />
-            </div>
-            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem', fontWeight: 700 }}>Delete this lead?</h3>
-            <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-              <strong>{deleteTarget.name || deleteTarget.id}</strong> will be permanently deleted from the database and removed from the Sales Pipeline. This action cannot be undone.
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-              <button className="btn btn-outline" onClick={() => setDeleteTarget(null)}>Cancel</button>
-              <button className="btn" onClick={confirmDelete} style={{ background: '#DC2626', color: '#fff', border: 'none' }}>Delete Permanently</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Generate Quotation Modal */}
       {isGenQuoteModalOpen && (
