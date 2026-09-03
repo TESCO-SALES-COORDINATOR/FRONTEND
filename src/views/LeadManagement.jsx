@@ -1567,7 +1567,7 @@ const LeadManagement = () => {
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-main)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.budget || '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.phone}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.email || '-'}</td>
-                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.campaign || '-'}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '240px' }}>{lead.campaign || '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.city || '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.timeline ? String(lead.timeline).replace(/_/g, ' ') : '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.area ? String(lead.area).replace(/_/g, ' ') : '-'}</td>
