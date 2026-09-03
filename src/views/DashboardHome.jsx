@@ -111,10 +111,20 @@ const DashboardHome = () => {
   const inRange = (v) => { const f = dstr(v); if (!f) return true; return (!dateRange.start || f >= dateRange.start) && (!dateRange.end || f <= dateRange.end); };
 
   /* ── Manager filter ── */
-  // Only the four real sales managers should appear in the dropdown (no stray/test names)
+  // Managers come live from the shared users collection, so any manager the Sales Head
+  // creates appears here automatically. Falls back to the known names if the fetch fails.
   const SALES_TEAM = ['Azar Abdullah A', 'Praveenraja P', 'Suresh P', 'Agsal A'];
   const [selectedManager, setSelectedManager] = useState('All');
-  const managerList = SALES_TEAM;
+  const [managerList, setManagerList] = useState(SALES_TEAM);
+  useEffect(() => {
+    fetch('https://api-salescoordinator.tescomanagement.com/api/auth/managers')
+      .then((r) => r.json())
+      .then((rows) => {
+        const names = (Array.isArray(rows) ? rows : []).map((m) => m && m.name).filter(Boolean);
+        if (names.length) setManagerList(names);
+      })
+      .catch(() => {});
+  }, []);
   const byManager = (arr) => selectedManager === 'All' ? arr : arr.filter(x => x.manager === selectedManager);
 
   const leads = byManager(allLeads).filter(l => inRange(l.date || l.createdAt));

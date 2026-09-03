@@ -83,6 +83,18 @@ const API_URL = 'https://api-salescoordinator.tescomanagement.com/api/leads';
 const LeadManagement = () => {
   const [leads, setLeads] = useState([]);
   const [leadsLoaded, setLeadsLoaded] = useState(false);
+  // Live manager list from the shared users collection, so any manager the Sales Head
+  // creates is immediately selectable here. Falls back to SALES_TEAM if the fetch fails.
+  const [managerList, setManagerList] = useState(SALES_TEAM);
+  useEffect(() => {
+    fetch('https://api-salescoordinator.tescomanagement.com/api/auth/managers')
+      .then((r) => r.json())
+      .then((rows) => {
+        const names = (Array.isArray(rows) ? rows : []).map((m) => m && m.name).filter(Boolean);
+        if (names.length) setManagerList(names);
+      })
+      .catch(() => {});
+  }, []);
 
   // Load leads from backend API on mount, then keep polling so leads created by
   // the n8n `lead-mail-PRODUCTION` automation appear automatically — no manual import.
@@ -1244,7 +1256,7 @@ const LeadManagement = () => {
           >
             <option value="All">All Managers</option>
             <option value="Unassigned">Unassigned</option>
-            {SALES_TEAM.map((name) => (<option key={name} value={name}>{name}</option>))}
+            {managerList.map((name) => (<option key={name} value={name}>{name}</option>))}
           </select>
           <ChevronDown size={16} color="var(--text-muted)" style={{ position: 'absolute', right: '0.9rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
         </div>
@@ -1418,6 +1430,11 @@ const LeadManagement = () => {
                 </th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Project Value</th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Phone Number</th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Email</th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Campaign</th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>City</th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Expected Start</th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Area (sq ft)</th>
                  <th style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
                   <select
                     value={headerFilters.source}
@@ -1508,7 +1525,7 @@ const LeadManagement = () => {
                   >
                     <option value="All" style={{ color: 'var(--text-main)' }}>ASSIGN TO (ALL)</option>
                     <option value="Unassigned" style={{ color: 'var(--text-main)' }}>UNASSIGNED</option>
-                    {SALES_TEAM.map((name) => (
+                    {managerList.map((name) => (
                       <option key={name} value={name} style={{ color: 'var(--text-main)' }}>{name.toUpperCase()}</option>
                     ))}
                   </select>
@@ -1549,6 +1566,11 @@ const LeadManagement = () => {
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-main)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.projectType}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-main)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.budget || '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.phone}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.email || '-'}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.campaign || '-'}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.city || '-'}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.timeline ? String(lead.timeline).replace(/_/g, ' ') : '-'}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.area ? String(lead.area).replace(/_/g, ' ') : '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: getSourceStyles(canonSource(lead.source)).bg, borderRadius: '9999px', padding: '0.2rem 0.1rem 0.2rem 0.6rem' }}>
                     <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: getSourceStyles(canonSource(lead.source)).dot, flexShrink: 0 }} />
@@ -1652,7 +1674,7 @@ const LeadManagement = () => {
                     }}
                   >
                     <option value="Unassigned">Unassigned</option>
-                    {SALES_TEAM.map((name) => (
+                    {managerList.map((name) => (
                       <option key={name} value={name}>{name}</option>
                     ))}
                   </select>

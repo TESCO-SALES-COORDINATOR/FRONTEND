@@ -114,6 +114,17 @@ const Appointments = () => {
   };
 
   const [activeTab, setActiveTab] = useState('Appointment');
+  // Live manager list from the shared users collection (any Sales-Head-created manager shows up).
+  const [managerList, setManagerList] = useState(SALES_TEAM);
+  useEffect(() => {
+    fetch('https://api-salescoordinator.tescomanagement.com/api/auth/managers')
+      .then((r) => r.json())
+      .then((rows) => {
+        const names = (Array.isArray(rows) ? rows : []).map((m) => m && m.name).filter(Boolean);
+        if (names.length) setManagerList(names);
+      })
+      .catch(() => {});
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [calendarDate, setCalendarDate] = useState(() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1); });
   const [selectedDay, setSelectedDay] = useState(null); // 'YYYY-MM-DD' when a calendar day is clicked
@@ -402,7 +413,7 @@ const Appointments = () => {
                 }}
               >
                 <option value="All">All Managers</option>
-                {SALES_TEAM.map(mgr => (
+                {managerList.map(mgr => (
                   <option key={mgr} value={mgr}>{mgr}</option>
                 ))}
               </select>
@@ -746,8 +757,8 @@ const Appointments = () => {
                       required={required}
                       style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem', backgroundColor: 'var(--surface-color)' }}>
                       <option value="">Select manager</option>
-                      {SALES_TEAM.map(n => <option key={n} value={n}>{n}</option>)}
-                      {newVisit.manager && !SALES_TEAM.includes(newVisit.manager) && <option value={newVisit.manager}>{newVisit.manager}</option>}
+                      {managerList.map(n => <option key={n} value={n}>{n}</option>)}
+                      {newVisit.manager && !managerList.includes(newVisit.manager) && <option value={newVisit.manager}>{newVisit.manager}</option>}
                     </select>
                   ) : (
                     <input type={type} value={newVisit[key]} onChange={e => setNewVisit({ ...newVisit, [key]: e.target.value })}

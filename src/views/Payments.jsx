@@ -475,6 +475,17 @@ const Payments = () => {
 
   const [rangeKey, setRangeKey] = useState('all');
   const [manager, setManager] = useState('all');
+  // Live managers from the shared users collection (any Sales-Head-created manager included).
+  const [fetchedManagers, setFetchedManagers] = useState([]);
+  useEffect(() => {
+    fetch('https://api-salescoordinator.tescomanagement.com/api/auth/managers')
+      .then((r) => r.json())
+      .then((rows) => {
+        const names = (Array.isArray(rows) ? rows : []).map((m) => m && m.name).filter(Boolean);
+        if (names.length) setFetchedManagers(names);
+      })
+      .catch(() => {});
+  }, []);
   const [statusFilter, setStatusFilter] = useState('all');
   const [dueDateFilter, setDueDateFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -540,11 +551,11 @@ const Payments = () => {
   //   Start from the app's sales roster, then fold in any manager seen on the
   //   leads (so a lead-autofilled manager is always selectable).
   const managerOptions = useMemo(() => {
-    const set = new Set(SALES_TEAM);
+    const set = new Set(fetchedManagers.length ? fetchedManagers : SALES_TEAM);
     leads.forEach((l) => { if (l.manager) set.add(l.manager); });
     if (form.manager) set.add(form.manager);
     return Array.from(set);
-  }, [leads, form.manager]);
+  }, [leads, form.manager, fetchedManagers]);
 
   // ── Date range label + start ──
   const rangeDays = RANGE_OPTIONS.find((o) => o.key === rangeKey)?.days;
