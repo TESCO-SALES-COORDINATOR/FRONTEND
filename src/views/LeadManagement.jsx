@@ -167,6 +167,11 @@ const LeadManagement = () => {
   const [rangeSelectionState, setRangeSelectionState] = useState('start');
   const [currentNavDate, setCurrentNavDate] = useState(new Date());
 
+  // Format a Date as YYYY-MM-DD in LOCAL time (never UTC). Using toISOString() here
+  // shifted the day back by one for timezones ahead of UTC (e.g. IST +5:30), which is
+  // what caused the "click Sep 3 → see Sep 2" off-by-one across the calendar.
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
   const applyPreset = (presetName) => {
     const today = new Date();
     let start = new Date();
@@ -206,8 +211,8 @@ const LeadManagement = () => {
     setSelectedPreset(presetName);
     if (presetName !== 'Custom') {
       setDateRange({
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
+        start: ymd(start),
+        end: ymd(end),
       });
       setIsCalendarOpen(false);
     }
@@ -242,19 +247,19 @@ const LeadManagement = () => {
 
   const isSelected = (day) => {
     if (!day) return false;
-    const formatted = day.toISOString().split('T')[0];
+    const formatted = ymd(day);
     return formatted === dateRange.start || formatted === dateRange.end;
   };
 
   const isRange = (day) => {
     if (!day || !dateRange.start || !dateRange.end) return false;
-    const formatted = day.toISOString().split('T')[0];
+    const formatted = ymd(day);
     return formatted > dateRange.start && formatted < dateRange.end;
   };
 
   const handleDayClick = (day) => {
     if (!day) return;
-    const formatted = day.toISOString().split('T')[0];
+    const formatted = ymd(day);
     
     // Single-date selection: show only that date's leads
     setDateRange({ start: formatted, end: formatted });
@@ -264,7 +269,10 @@ const LeadManagement = () => {
 
   const formatDateDisplay = (dateStr) => {
     if (!dateStr) return '';
-    const date = new Date(dateStr);
+    const parts = String(dateStr).split('-');
+    const date = parts.length === 3
+      ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      : new Date(dateStr);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
@@ -668,8 +676,10 @@ const LeadManagement = () => {
     if (!dateRange.start || !dateRange.end) return true;
     const t = new Date(v).getTime();
     if (isNaN(t)) return true; // undated records are never hidden
-    const s = new Date(dateRange.start); s.setHours(0, 0, 0, 0);
-    const e = new Date(dateRange.end); e.setHours(23, 59, 59, 999);
+    const sp = String(dateRange.start).split('-').map(Number);
+    const ep = String(dateRange.end).split('-').map(Number);
+    const s = new Date(sp[0], sp[1] - 1, sp[2], 0, 0, 0, 0);
+    const e = new Date(ep[0], ep[1] - 1, ep[2], 23, 59, 59, 999);
     return t >= s.getTime() && t <= e.getTime();
   };
   const overviewLeads = leads.filter(l => byMgr(l.manager) && inDateRange(l.date || l.createdAt));

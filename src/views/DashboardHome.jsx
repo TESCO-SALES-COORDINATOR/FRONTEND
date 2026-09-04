@@ -231,7 +231,7 @@ const DashboardHome = () => {
     if (!rangeSelectionState || rangeSelectionState === 'start') { setDateRange({ start: f, end: '' }); setRangeSelectionState('end'); setSelectedPreset('Custom'); }
     else { if (f < dateRange.start) setDateRange({ start: f, end: dateRange.start }); else setDateRange({ ...dateRange, end: f }); setRangeSelectionState('start'); setIsCalendarOpen(false); }
   };
-  const fmtD = (s) => { if (!s) return ''; return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
+  const fmtD = (s) => { if (!s) return ''; const parts = String(s).split('-'); const date = parts.length === 3 ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])) : new Date(s); return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
 
   const pillBtn = {
     display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'var(--surface-color)',
