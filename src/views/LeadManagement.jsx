@@ -602,30 +602,44 @@ const LeadManagement = () => {
     }
   };
 
-  // "Delete" permanently removes the lead. It is deleted from the `leads` collection
-  // AND from the shared `pipelines` collection (whose docs are keyed OP-<lead digits>),
-  // so it does not linger as a "legacy" row in the Sales Pipeline. It is also removed
-  // from local state so the bulk-sync round-trip never re-uploads it to the DB.
+  // "Delete" is a SOFT delete: it moves the lead to Junk instead of destroying it.
+  // The lead record is kept (all its data preserved) with status set to "Junk" and a
+  // history entry appended, so it can still be viewed via the Junk filter. It is also
+  // removed from the shared `pipelines` collection (whose docs are keyed OP-<lead digits>)
+  // so a junked lead does not linger as a row in the Sales Pipeline.
   const confirmDelete = () => {
     if (!deleteTarget) return;
     const id = deleteTarget.id;
-    // Hard-delete the lead record from the backend.
-    fetch(`${API_URL}/${id}`, { method: 'DELETE' })
-      .catch(err => console.error('Failed to delete lead:', err));
-    // Delete the matching pipeline opportunity (id derives as OP-<digits of lead id>).
+    // Build the junked lead, preserving all existing data and appending a history entry.
+    const updatedLead = {
+      ...deleteTarget,
+      status: 'Junk',
+      history: [
+        ...(deleteTarget.history || []),
+        { timestamp: getFormattedTimestamp(), message: 'Lead moved to Junk' }
+      ]
+    };
+    // Soft-delete: persist the status change to the backend (no hard DELETE).
+    fetch(`${API_URL}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedLead)
+    }).catch(err => console.error('Failed to move lead to Junk:', err));
+    // Delete the matching pipeline opportunity (id derives as OP-<digits of lead id>)
+    // so the junked lead leaves the Sales Pipeline.
     const opId = `OP-${String(id).replace(/\D/g, '') || id}`;
     fetch(`https://api-salescoordinator.tescomanagement.com/api/pipeline/${opId}`, { method: 'DELETE' })
       .catch(err => console.error('Failed to delete pipeline entry:', err));
-    // Drop it from local state so the sync effect posts the reduced set (no resurrect).
-    setLeads(leads.filter(l => l.id !== id));
+    // Update local state IN PLACE (keep the lead, just flip its status to Junk).
+    setLeads(leads.map(l => l.id === id ? updatedLead : l));
     // Clear any legacy localStorage pipeline entry for this lead.
     try {
       const extras = JSON.parse(localStorage.getItem('crm_pipeline_extra') || '[]');
       localStorage.setItem('crm_pipeline_extra', JSON.stringify(extras.filter(o => o.leadId !== id)));
     } catch (e) { /* storage unavailable */ }
-    if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) setSelectedLeadForTimeline(null);
+    if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) setSelectedLeadForTimeline(updatedLead);
     setDeleteTarget(null);
-    addToast('Lead deleted', 'info');
+    addToast('Lead moved to Junk', 'info');
   };
 
   const [isApptModalOpen, setIsApptModalOpen] = useState(false);
@@ -706,6 +720,9 @@ const LeadManagement = () => {
       const matchProj = (l.projectType || '').toLowerCase().includes(q);
       if (!matchName && !matchId && !matchProj) return false;
     }
+
+    // Junk leads are hidden from the table everywhere except the dedicated Junk filter.
+    if (statusFilter !== 'Junk' && (l.status || '').toLowerCase().includes('junk')) return false;
 
     if (statusFilter !== 'All') {
       const statusLower = (l.status || '').toLowerCase();
@@ -1735,6 +1752,9 @@ const LeadManagement = () => {
                     <button title="Download" onClick={(e) => { e.stopPropagation(); downloadLead(lead); }} style={{ background: '#DCFCE7', border: 'none', color: '#166534', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                       <Download size={12} />
                     </button>
+                    <button title="Move to Junk" onClick={(e) => { e.stopPropagation(); setDeleteTarget(lead); }} style={{ background: '#FEE2E2', border: 'none', color: '#DC2626', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                      <Trash2 size={12} />
+                    </button>
                   </div>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', maxWidth: '120px' }} onClick={(e) => e.stopPropagation()}>
@@ -1775,6 +1795,52 @@ const LeadManagement = () => {
         onClose={() => { setIsModalOpen(false); setEditLead(null); }}
         onSave={handleWizardSave}
       />
+
+      {/* Move to Junk confirmation modal (soft delete) */}
+      {deleteTarget && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.4)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+          animation: 'fadeInBackdrop 0.25s ease-out'
+        }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '440px',
+            padding: '2rem',
+            animation: 'scaleIn 0.25s ease-out',
+            backgroundColor: 'var(--surface-color)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            borderRadius: 'var(--radius-lg)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#FEE2E2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Trash2 size={20} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: '700', color: 'var(--text-main)' }}>Move lead to Junk?</h3>
+            </div>
+            <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+              This will move <strong>{deleteTarget.name || 'this lead'}</strong> to Junk. The lead is not permanently deleted &mdash; you can still view it under the Junk filter. It will be removed from the Sales Pipeline.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                style={{ padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', background: 'var(--surface-color)', color: 'var(--text-main)', fontWeight: '600', fontSize: '0.8125rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                style={{ padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: 'none', background: '#DC2626', color: 'white', fontWeight: '600', fontSize: '0.8125rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Move to Junk
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {/* Generate Quotation Modal */}
