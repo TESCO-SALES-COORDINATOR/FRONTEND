@@ -155,54 +155,86 @@ const SalesPipeline = () => {
 
   // Merge: derive an opportunity from every valued lead, then overlay stored edits
   // (stage / follow-up) and legacy seed rows. Deduped by lead id.
+  // Canonical opportunity id for a lead (keep leading zeros — must match every app).
+  const canonId = (leadId) => `OP-${String(leadId || '').replace(/\D/g, '') || leadId}`;
+  const scoreDoc = (e) => (e && e.stage && e.stage !== 'New' ? 2 : 0) + (e && e.followUp ? 1 : 0);
+
+  // ONE ROW PER LEAD. The shared `pipelines` collection can hold several docs for the same
+  // lead (older OP-id schemes / lost leadId). Resolve every stored doc back to its lead
+  // (by leadId, canonical OP-id, or customer name), keep only the best override per lead,
+  // and never render a stored doc as its own row unless it truly has no matching lead.
   const pipeline = useMemo(() => {
     const byLead = new Map();
-    leads.forEach((l) => {
-      const val = parseVal(l.budget != null ? l.budget : l.value);
-      if (val <= 0) return;
-      if (String(l.status || '').toLowerCase() === 'junk') return;
-      byLead.set(l.id, deriveFromLead(l, val));
-    });
-    extras.forEach((e) => {
-      const key = e.leadId || e.id;
-      const base = byLead.get(key);
-      if (base) {
-        // Live lead drives customer/value/service; the stored extra keeps the user's
-        // stage & follow-up edits.
-        byLead.set(key, {
-          ...base,
-          stage: e.stage || base.stage,
-          followUp: (e.followUp !== undefined && e.followUp !== '') ? e.followUp : base.followUp,
-          expectedClose: (e.expectedClose && e.expectedClose !== '-') ? e.expectedClose : base.expectedClose,
-        });
-      } else {
-        // Legacy / seed opportunity with no matching live lead — keep it as-is.
-        byLead.set(key, e);
-      }
-    });
-    return Array.from(byLead.values());
-  }, [leads, extras]);
-
-  // Persist derived opportunities to MongoDB once leads are loaded, so ALL pipeline rows live
-  // in the DB (not only the ones a stage/follow-up was edited on). Idempotent upsert by id.
-  const persistedRef = React.useRef(false);
-  useEffect(() => {
-    if (persistedRef.current || leads.length === 0) return;
-    const extraIds = new Set(extras.map((e) => e.id));
-    const extraLeadIds = new Set(extras.map((e) => e.leadId).filter(Boolean));
-    const toPersist = [];
+    const leadByOpId = new Map();
+    const leadByName = new Map();
     leads.forEach((l) => {
       const val = parseVal(l.budget != null ? l.budget : l.value);
       if (val <= 0 || String(l.status || '').toLowerCase() === 'junk') return;
-      const op = deriveFromLead(l, val);
-      if (extraIds.has(op.id) || (op.leadId && extraLeadIds.has(op.leadId))) return;
-      toPersist.push(toPayload(op));
+      byLead.set(l.id, deriveFromLead(l, val));
+      leadByOpId.set(canonId(l.id), l.id);
+      if (l.name) leadByName.set(String(l.name).trim().toLowerCase(), l.id);
     });
-    persistedRef.current = true;
-    if (toPersist.length === 0) return;
-    fetch(`${PIPELINE_API}/bulk`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toPersist) })
+    const resolveLead = (e) => {
+      if (e.leadId && byLead.has(e.leadId)) return e.leadId;
+      if (leadByOpId.has(e.id)) return leadByOpId.get(e.id);
+      const n = String(e.customer || '').trim().toLowerCase();
+      if (n && leadByName.has(n)) return leadByName.get(n);
+      return null;
+    };
+    const bestByLead = new Map();
+    const orphans = new Map();
+    extras.forEach((e) => {
+      const lid = resolveLead(e);
+      if (lid) { const cur = bestByLead.get(lid); if (!cur || scoreDoc(e) > scoreDoc(cur)) bestByLead.set(lid, e); }
+      else if (!orphans.has(e.id)) orphans.set(e.id, e);
+    });
+    bestByLead.forEach((e, lid) => {
+      const base = byLead.get(lid);
+      if (!base) return;
+      byLead.set(lid, {
+        ...base,
+        stage: e.stage || base.stage,
+        followUp: (e.followUp !== undefined && e.followUp !== '') ? e.followUp : base.followUp,
+        expectedClose: (e.expectedClose && e.expectedClose !== '-') ? e.expectedClose : base.expectedClose,
+      });
+    });
+    return [...Array.from(byLead.values()), ...Array.from(orphans.values())];
+  }, [leads, extras]);
+
+  // One-time self-heal: the shared `pipelines` collection may hold duplicate docs for the same
+  // lead (older OP-id schemes / lost leadId from earlier builds). Keep the best doc per lead and
+  // DELETE the rest so the duplicates are removed from the database for every app. We no longer
+  // auto-persist derived opportunities — a doc is written only when the user edits/adds one.
+  const healedRef = React.useRef(false);
+  useEffect(() => {
+    if (healedRef.current || leads.length === 0 || extras.length === 0) return;
+    const leadIds = new Set(leads.map((l) => l.id));
+    const leadByOpId = new Map();
+    const leadByName = new Map();
+    leads.forEach((l) => {
+      leadByOpId.set(`OP-${String(l.id || '').replace(/\D/g, '') || l.id}`, l.id);
+      if (l.name) leadByName.set(String(l.name).trim().toLowerCase(), l.id);
+    });
+    const resolveLead = (e) => {
+      if (e.leadId && leadIds.has(e.leadId)) return e.leadId;
+      if (leadByOpId.has(e.id)) return leadByOpId.get(e.id);
+      const n = String(e.customer || '').trim().toLowerCase();
+      if (n && leadByName.has(n)) return leadByName.get(n);
+      return null;
+    };
+    const groups = new Map();
+    extras.forEach((e) => { const lid = resolveLead(e); if (lid) { const a = groups.get(lid) || []; a.push(e); groups.set(lid, a); } });
+    const removeIds = [];
+    groups.forEach((docs) => {
+      if (docs.length < 2) return;
+      const sorted = [...docs].sort((a, b) => scoreDoc(b) - scoreDoc(a));
+      sorted.slice(1).forEach((d) => { if (d.id) removeIds.push(d.id); });
+    });
+    if (removeIds.length === 0) { healedRef.current = true; return; }
+    healedRef.current = true;
+    Promise.all(removeIds.map((id) => fetch(`${PIPELINE_API}/${id}`, { method: 'DELETE' }).catch(() => {})))
       .then(() => fetch(PIPELINE_API).then((r) => r.json()).then((d) => { if (Array.isArray(d)) setExtras(d); }))
-      .catch((e) => console.error('Failed to persist pipeline opportunities:', e));
+      .catch(() => {});
   }, [leads, extras]);
 
   // Persist a stage / follow-up edit to MongoDB (upsert by opportunity id) and mirror it
