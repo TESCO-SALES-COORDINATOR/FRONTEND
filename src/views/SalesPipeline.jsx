@@ -176,11 +176,13 @@ const SalesPipeline = () => {
       if (val <= 0 || String(l.status || '').toLowerCase() === 'junk') return;
       byLead.set(l.id, deriveFromLead(l, val));
       leadByOpId.set(canonId(l.id), l.id);
+      leadByOpId.set('L' + parseInt(String(l.id || '').replace(/\D/g, ''), 10), l.id);
       if (l.name) leadByName.set(String(l.name).trim().toLowerCase(), l.id);
     });
     const resolveLead = (e) => {
       if (e.leadId && byLead.has(e.leadId)) return e.leadId;
       if (leadByOpId.has(e.id)) return leadByOpId.get(e.id);
+      const _nk = 'L' + parseInt(String(e.leadId || e.id).replace(/\D/g, ''), 10); if (leadByOpId.has(_nk)) return leadByOpId.get(_nk);
       const n = String(e.customer || '').trim().toLowerCase();
       if (n && leadByName.has(n)) return leadByName.get(n);
       return null;
@@ -217,11 +219,13 @@ const SalesPipeline = () => {
     const leadByName = new Map();
     leads.forEach((l) => {
       leadByOpId.set(`OP-${String(l.id || '').replace(/\D/g, '') || l.id}`, l.id);
+      leadByOpId.set('L' + parseInt(String(l.id || '').replace(/\D/g, ''), 10), l.id);
       if (l.name) leadByName.set(String(l.name).trim().toLowerCase(), l.id);
     });
     const resolveLead = (e) => {
       if (e.leadId && leadIds.has(e.leadId)) return e.leadId;
       if (leadByOpId.has(e.id)) return leadByOpId.get(e.id);
+      const _nk = 'L' + parseInt(String(e.leadId || e.id).replace(/\D/g, ''), 10); if (leadByOpId.has(_nk)) return leadByOpId.get(_nk);
       const n = String(e.customer || '').trim().toLowerCase();
       if (n && leadByName.has(n)) return leadByName.get(n);
       return null;
