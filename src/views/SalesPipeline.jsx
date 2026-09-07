@@ -127,6 +127,7 @@ const actionBtnStyle = (bg, color) => ({
 const SalesPipeline = () => {
   const [extras, setExtras] = useState([]); // stage/follow-up edits, loaded from MongoDB (/api/pipeline)
   const [leads, setLeads] = useState([]);   // live leads from the backend
+  const [leadsLoaded, setLeadsLoaded] = useState(false); // true once the first leads fetch settles
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState('All');
   const [execFilter, setExecFilter] = useState('All');
@@ -145,7 +146,7 @@ const SalesPipeline = () => {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      fetch(LEADS_API).then((r) => r.json()).then((d) => { if (!cancelled && Array.isArray(d)) setLeads([...d].sort((a, b) => new Date(b.createdAt || b.updatedAt || b.date || 0) - new Date(a.createdAt || a.updatedAt || a.date || 0))); }).catch(() => {});
+      fetch(LEADS_API).then((r) => r.json()).then((d) => { if (!cancelled && Array.isArray(d)) setLeads([...d].sort((a, b) => new Date(b.createdAt || b.updatedAt || b.date || 0) - new Date(a.createdAt || a.updatedAt || a.date || 0))); }).catch(() => {}).finally(() => { if (!cancelled) setLeadsLoaded(true); });
       fetch(PIPELINE_API).then((r) => r.json()).then((d) => { if (!cancelled && Array.isArray(d)) setExtras(d); }).catch(() => {});
     };
     load();
@@ -164,6 +165,9 @@ const SalesPipeline = () => {
   // (by leadId, canonical OP-id, or customer name), keep only the best override per lead,
   // and never render a stored doc as its own row unless it truly has no matching lead.
   const pipeline = useMemo(() => {
+    // Wait until the leads list has loaded — otherwise stored docs can't be matched to their
+    // lead yet and would flash as duplicate rows on first open.
+    if (!leadsLoaded) return [];
     const byLead = new Map();
     const leadByOpId = new Map();
     const leadByName = new Map();
@@ -199,7 +203,7 @@ const SalesPipeline = () => {
       });
     });
     return [...Array.from(byLead.values()), ...Array.from(orphans.values())];
-  }, [leads, extras]);
+  }, [leads, extras, leadsLoaded]);
 
   // One-time self-heal: the shared `pipelines` collection may hold duplicate docs for the same
   // lead (older OP-id schemes / lost leadId from earlier builds). Keep the best doc per lead and
