@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Pencil, Calendar, ChevronDown } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import HandoverForm from '../components/HandoverForm';
+import { formatINRShort } from '../api/client';
 
 const PROJECTS_API = 'https://api-salescoordinator.tescomanagement.com/api/projects';
 const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
@@ -13,8 +14,8 @@ const parseAmount = (val) => {
   const n = parseFloat(String(val).replace(/[^0-9.]/g, ''));
   return Number.isNaN(n) ? 0 : n;
 };
-// Indian grouping: 450000 -> ₹4,50,000
-const formatINR = (n) => '₹' + Math.round(parseAmount(n)).toLocaleString('en-IN');
+// Shared Indian Lakh/Crore formatter (e.g. ₹4.5 Lakhs)
+const formatINR = (n) => formatINRShort(n);
 
 // ── Date helpers (all derived from "now", nothing hardcoded) ────
 const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });

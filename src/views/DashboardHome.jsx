@@ -5,6 +5,7 @@ import {
   ThumbsUp, AlertCircle, ChevronRight, ChevronLeft, ChevronDown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { formatINRShort } from '../api/client';
 
 // --- API endpoints (unchanged backend) ---
 const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
@@ -179,10 +180,7 @@ const DashboardHome = () => {
 
   /* ── Payments (from the REAL payments collection — same source & fields as the
         Payment Collection page, so the dashboard matches it exactly) ── */
-  const fmtCompact = (n) => n >= 1e7 ? '₹' + (n / 1e7).toFixed(1).replace(/\.0$/, '') + 'Cr'
-    : n >= 1e5 ? '₹' + (n / 1e5).toFixed(1).replace(/\.0$/, '') + 'L'
-    : n >= 1e3 ? '₹' + Math.round(n / 1e3) + 'K'
-    : '₹' + Math.round(n);
+  const fmtCompact = (n) => formatINRShort(n);
   // Scope payments to the selected manager (by the payment's own manager, or via its lead).
   const dPayments = livePayments.filter(p => inRange(p.date || p.createdAt));
   const scopedPayments = selectedManager === 'All'

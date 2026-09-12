@@ -199,6 +199,17 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
     return () => { active = false; };
   }, [isOpen]);
 
+  // Auto-calc: Lead Time Promised = days between tentative start & completion (mirrors handover form).
+  useEffect(() => {
+    const s = form.ocStartDate, e = form.ocCompletionDate;
+    if (!s || !e) return;
+    const d1 = new Date(s), d2 = new Date(e);
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return;
+    const days = Math.round((d2 - d1) / 86400000);
+    const val = days > 0 ? `${days} days` : '';
+    setForm((f) => (f.ocLeadTime === val ? f : { ...f, ocLeadTime: val }));
+  }, [form.ocStartDate, form.ocCompletionDate]);
+
   if (!isOpen) return null;
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
@@ -539,7 +550,7 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
                     <input type="date" style={inputStyle} value={form.ocCompletionDate} onChange={(e) => set('ocCompletionDate', e.target.value)} />
                   </Field>
                   <Field label="Lead Time Promised">
-                    <input style={inputStyle} placeholder="e.g. 30 days" value={form.ocLeadTime} onChange={(e) => set('ocLeadTime', e.target.value)} />
+                    <input style={{ ...inputStyle, backgroundColor: '#F8FAFC', cursor: 'not-allowed' }} placeholder="Auto-calculated" value={form.ocLeadTime} readOnly disabled />
                   </Field>
                 </div>
               </SectionCard>

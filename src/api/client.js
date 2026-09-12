@@ -4,7 +4,6 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api-salescoordinator.tescomanagement.com/api';
 
 export const getToken = () => localStorage.getItem('crm_token');
-
 export const setSession = (token, user) => {
   localStorage.setItem('crm_token', token);
   localStorage.setItem('crm_user', JSON.stringify(user));
@@ -72,4 +71,33 @@ export const authApi = {
   me: () => api('/auth/me', { auth: true }),
   updateProfile: ({ name, email }) =>
     api('/auth/profile', { method: 'PATCH', body: { name, email }, auth: true }),
+};
+
+/* ─────────────────── Indian currency formatting (shared) ───────────────────
+   formatINR      → full amount with ₹ + Indian digit grouping (e.g. ₹15,000, ₹15,00,000)
+   formatINRShort → ₹1 Lakh / ₹1.5 Lakhs / ₹1 Crore / ₹1.5 Crores above 1,00,000;
+                    Indian-grouped ₹ below that. Trailing .0 trimmed. Mirrors the mobile app. */
+const _toNum = (v) => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+const _indianGroup = (value) => {
+  const neg = value < 0;
+  const rounded = Math.round(Math.abs(value) * 100) / 100;
+  const [intPart, decPart] = String(rounded).split('.');
+  const last3 = intPart.length > 3 ? intPart.slice(-3) : intPart;
+  const rest = intPart.length > 3 ? intPart.slice(0, -3) : '';
+  const grouped = rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last3 : last3;
+  return (neg ? '-' : '') + grouped + (decPart ? '.' + decPart : '');
+};
+const _trim = (x) => String(Math.round(x * 100) / 100);
+export const formatINR = (v) => '₹' + _indianGroup(_toNum(v));
+export const formatINRShort = (v) => {
+  const n = _toNum(v);
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  if (abs >= 1e7) { const val = _trim(abs / 1e7); return `${sign}₹${val} ${val === '1' ? 'Crore' : 'Crores'}`; }
+  if (abs >= 1e5) { const val = _trim(abs / 1e5); return `${sign}₹${val} ${val === '1' ? 'Lakh' : 'Lakhs'}`; }
+  return sign + '₹' + _indianGroup(abs);
 };

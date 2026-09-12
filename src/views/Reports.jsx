@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BarChart3, PieChart, TrendingUp, Users, DollarSign } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell } from 'recharts';
 import { useToast } from '../components/Toast';
+import { formatINRShort } from '../api/client';
 
 const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
 const QUOTES_API = 'https://api-salescoordinator.tescomanagement.com/api/quotations';
@@ -14,12 +15,7 @@ const parseAmount = (val) => {
   const n = parseFloat(String(val).replace(/[^0-9.]/g, ''));
   return Number.isNaN(n) ? 0 : n;
 };
-const formatCompact = (n) => {
-  if (n >= 1e7) return '₹' + (n / 1e7).toFixed(2) + 'Cr';
-  if (n >= 1e5) return '₹' + (n / 1e5).toFixed(2) + 'L';
-  if (n >= 1e3) return '₹' + Math.round(n / 1e3) + 'K';
-  return '₹' + Math.round(n);
-};
+const formatCompact = (n) => formatINRShort(n);
 const formatINR = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
 const quoteTotal = (q) => parseAmount(q.amount) + parseAmount(q.gst);
 

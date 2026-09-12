@@ -85,15 +85,17 @@ const LeadManagement = () => {
   const [leadsLoaded, setLeadsLoaded] = useState(false);
   // Live manager list from the shared users collection, so any manager the Sales Head
   // creates is immediately selectable here. Falls back to SALES_TEAM if the fetch fails.
-  const [managerList, setManagerList] = useState(SALES_TEAM);
+  const [managerList, setManagerList] = useState([]);
   useEffect(() => {
     fetch('https://api-salescoordinator.tescomanagement.com/api/auth/managers')
       .then((r) => r.json())
       .then((rows) => {
-        const names = (Array.isArray(rows) ? rows : []).map((m) => m && m.name).filter(Boolean);
+        const names = (Array.isArray(rows) ? rows : [])
+          .filter((m) => m && m.isActive !== false)
+          .map((m) => m && m.name).filter(Boolean);
         if (names.length) setManagerList(names);
       })
-      .catch(() => {});
+      .catch(() => setManagerList(SALES_TEAM));
   }, []);
 
   // Load leads from backend API on mount, then keep polling so leads created by

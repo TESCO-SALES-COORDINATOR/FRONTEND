@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Filter, Flame, Activity, Snowflake, XCircle, Eye, Pencil, Trash2, X } from 'lucide-react';
 import { stageColor } from '../theme/statusColors';
+import { formatINRShort } from '../api/client';
 
 // Pipeline stage options (the fixed set a deal can move through)
 const STAGES = ['New', 'Hot', 'Warm', 'Cold', 'Appointment Fixed', 'Lost'];
@@ -11,8 +12,8 @@ const ROWS_PER_PAGE = 10;
 // Delegate to the shared canonical palette so pipeline stages match statuses everywhere.
 const getStageStyles = (stage) => stageColor(stage);
 
-// Rupee grouping used across the app (e.g. 850000 -> ₹8,50,000)
-const formatINR = (num) => '₹' + Number(num || 0).toLocaleString('en-IN');
+// Rupee formatting used across the app — shared Indian Lakh/Crore formatter.
+const formatINR = (num) => formatINRShort(num);
 
 // Backend endpoints. Pipeline stage / follow-up edits are stored in MongoDB (the SAME
 // `pipelines` collection the Sales Manager app uses) — no localStorage, no hardcoded data.

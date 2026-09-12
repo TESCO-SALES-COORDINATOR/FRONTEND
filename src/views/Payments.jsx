@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { CheckCircle, Clock, AlertCircle, XCircle, Plus, Calendar, ChevronDown, X, Eye, Trash2, Pencil, Download, Upload, FileText, Bell, Save } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import { formatINRShort } from '../api/client';
 
 const PAYMENTS_API = 'https://api-salescoordinator.tescomanagement.com/api/payments';
 const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
@@ -19,15 +20,8 @@ const parseAmount = (val) => {
 };
 // Indian grouping: 450000 -> ₹4,50,000
 const formatINR = (n) => '₹' + Math.round(parseAmount(n)).toLocaleString('en-IN');
-// Compact: 24000000 -> ₹2.4Cr, 4500000 -> ₹45L
-const formatCompact = (val) => {
-  const n = parseAmount(val);
-  const trim = (v) => Number(v.toFixed(2)).toString();
-  if (n >= 1e7) return '₹' + trim(n / 1e7) + 'Cr';
-  if (n >= 1e5) return '₹' + trim(n / 1e5) + 'L';
-  if (n >= 1e3) return '₹' + trim(n / 1e3) + 'K';
-  return '₹' + Math.round(n);
-};
+// Compact: shared Indian Lakh/Crore formatter (e.g. ₹2.4 Crores, ₹45 Lakhs)
+const formatCompact = (val) => formatINRShort(val);
 
 // ── Date helpers ───────────────────────────────────────────────
 const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
