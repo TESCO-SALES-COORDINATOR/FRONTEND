@@ -109,17 +109,29 @@ const LeadManagement = () => {
   // Live manager list from the shared users collection, so any manager the Sales Head
   // creates is immediately selectable here. Falls back to SALES_TEAM if the fetch fails.
   const [managerList, setManagerList] = useState([]);
+  // Map of manager name -> designation ('Manager' | 'Business Development Executive')
+  // so the "Assigned To" display can read e.g. "Rajesh – Manager" / "Kumar – BDE".
+  const [mgrDesig, setMgrDesig] = useState({});
   useEffect(() => {
     fetch('https://api-salescoordinator.tescomanagement.com/api/auth/managers')
       .then((r) => r.json())
       .then((rows) => {
-        const names = (Array.isArray(rows) ? rows : [])
-          .filter((m) => m && m.isActive !== false)
-          .map((m) => m && m.name).filter(Boolean);
+        const list = (Array.isArray(rows) ? rows : []).filter((m) => m && m.isActive !== false);
+        const names = list.map((m) => m && m.name).filter(Boolean);
         if (names.length) setManagerList(names);
+        const map = {};
+        list.forEach((m) => { if (m && m.name) map[String(m.name).trim().toLowerCase()] = m.designation || 'Manager'; });
+        setMgrDesig(map);
       })
       .catch(() => setManagerList(SALES_TEAM));
   }, []);
+  // "Name – Manager/BDE" for a given assigned name (falls back to just the name).
+  const desigLabel = (name) => {
+    if (!name || name === 'Unassigned') return 'Unassigned';
+    const d = mgrDesig[String(name).trim().toLowerCase()];
+    if (!d) return name;
+    return `${name} – ${String(d).trim().toLowerCase() === 'business development executive' ? 'BDE' : 'Manager'}`;
+  };
 
   // Load leads from backend API on mount, then keep polling so leads created by
   // the n8n `lead-mail-PRODUCTION` automation appear automatically — no manual import.
@@ -1962,8 +1974,11 @@ const LeadManagement = () => {
                   >
                     <option value="Unassigned">Unassigned</option>
                     {managerList.map((name) => (
-                      <option key={name} value={name}>{name}</option>
+                      <option key={name} value={name}>{desigLabel(name)}</option>
                     ))}
+                    {lead.manager && lead.manager !== 'Unassigned' && !managerList.some((n) => String(n).trim().toLowerCase() === String(lead.manager).trim().toLowerCase()) && (
+                      <option value={lead.manager}>{desigLabel(lead.manager)}</option>
+                    )}
                   </select>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
