@@ -883,6 +883,9 @@ const LeadManagement = () => {
         matchesStatus = statusLower.includes('junk');
       } else if (statusFilter === 'Lost') {
         matchesStatus = statusLower.includes('lost');
+      } else if (statusFilter === 'Overdue') {
+        // Overdue is derived from the follow-up date/time, not the lead status.
+        matchesStatus = getFollowUpState(l) === 'overdue';
       }
       if (!matchesStatus) return false;
     }
@@ -1539,15 +1542,15 @@ const LeadManagement = () => {
             onClick={() => toggleFilter('Junk')}
           />
           <LeadOverviewCard
-            title="Lost"
-            value={overviewLeads.filter(l => (l.status||'').toLowerCase().includes('lost')).length}
-            subtitle="Unconverted leads"
-            icon={XCircle}
-            color="#EF4444"
+            title="Overdue"
+            value={overviewLeads.filter(l => !(l.status||'').toLowerCase().includes('junk') && getFollowUpState(l) === 'overdue').length}
+            subtitle="Follow-up passed"
+            icon={Clock}
+            color="#DC2626"
             bg="#FEF2F2"
             borderColor="#FECACA"
-            isSelected={statusFilter === 'Lost'}
-            onClick={() => toggleFilter('Lost')}
+            isSelected={statusFilter === 'Overdue'}
+            onClick={() => toggleFilter('Overdue')}
           />
         </div>
       </div>
