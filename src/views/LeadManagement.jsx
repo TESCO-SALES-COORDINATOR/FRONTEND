@@ -1974,10 +1974,10 @@ const LeadManagement = () => {
                   >
                     <option value="Unassigned">Unassigned</option>
                     {managerList.map((name) => (
-                      <option key={name} value={name}>{desigLabel(name)}</option>
+                      <option key={name} value={name}>{name}</option>
                     ))}
                     {lead.manager && lead.manager !== 'Unassigned' && !managerList.some((n) => String(n).trim().toLowerCase() === String(lead.manager).trim().toLowerCase()) && (
-                      <option value={lead.manager}>{desigLabel(lead.manager)}</option>
+                      <option value={lead.manager}>{lead.manager}</option>
                     )}
                   </select>
                 </td>
