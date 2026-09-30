@@ -5,6 +5,28 @@ import { useToast } from '../components/Toast';
 import { statusColor, sourceColor } from '../theme/statusColors';
 import { formatBytes } from '../utils/cloudinary';
 
+// --- Follow-up date/time helpers ---------------------------------------------
+// The follow-up value is still stored as 24-hour "HH:mm" (so saved data, overdue
+// detection and reminders are unchanged); only the INPUT is a 12-hour AM/PM picker
+// and the date field blocks past days.
+const fuTodayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const FU_HOURS12 = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+const FU_MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+const fuTo12 = (hhmm) => {
+  if (!hhmm || !/^\d{1,2}:\d{2}/.test(hhmm)) return { h: '', m: '', ap: 'AM' };
+  const [H, M] = hhmm.split(':');
+  let h = parseInt(H, 10); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12; if (h === 0) h = 12;
+  return { h: String(h).padStart(2, '0'), m: M, ap };
+};
+const fuFrom12 = (h, m, ap) => {
+  if (!h) return '';
+  let H = parseInt(h, 10) % 12; if (ap === 'PM') H += 12;
+  return `${String(H).padStart(2, '0')}:${m || '00'}`;
+};
+
 const LEAD_SOURCES = [
   'Referral',
   'Website Enquiry',
@@ -521,6 +543,15 @@ const LeadManagement = () => {
     if (!fuNoFurther && (!fuDate || !fuTime)) {
       addToast && addToast('Set the Follow-up Date and Time, or tick "No further follow-up".', 'error');
       return;
+    }
+
+    // Block a follow-up scheduled in the past (past date, or an earlier time today).
+    if (!fuNoFurther) {
+      const dt = new Date(`${fuDate}T${fuTime}`);
+      if (isNaN(dt.getTime()) || dt.getTime() < Date.now()) {
+        addToast && addToast('Follow-up date/time cannot be in the past.', 'error');
+        return;
+      }
     }
 
     const formattedTime = getFormattedTimestamp();
@@ -2367,13 +2398,32 @@ const LeadManagement = () => {
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 45%' }}>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-main)', marginBottom: '0.4rem' }}>Follow-up Date</label>
-                    <input type="date" value={fuDate} disabled={fuNoFurther} onChange={(e) => setFuDate(e.target.value)}
+                    <input type="date" value={fuDate} min={fuTodayStr()} disabled={fuNoFurther} onChange={(e) => setFuDate(e.target.value)}
                       style={{ width: '100%', padding: '0.55rem 0.6rem', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.875rem', fontFamily: 'inherit', color: 'var(--text-main)', background: 'var(--surface-color)', boxSizing: 'border-box' }} />
                   </div>
                   <div style={{ flex: '1 1 45%' }}>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-main)', marginBottom: '0.4rem' }}>Follow-up Time</label>
-                    <input type="time" value={fuTime} disabled={fuNoFurther} onChange={(e) => setFuTime(e.target.value)}
-                      style={{ width: '100%', padding: '0.55rem 0.6rem', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.875rem', fontFamily: 'inherit', color: 'var(--text-main)', background: 'var(--surface-color)', boxSizing: 'border-box' }} />
+                    {(() => {
+                      const t = fuTo12(fuTime);
+                      const sel = { flex: 1, padding: '0.55rem 0.4rem', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.875rem', fontFamily: 'inherit', color: 'var(--text-main)', background: 'var(--surface-color)', boxSizing: 'border-box' };
+                      const setPart = (part, val) => { const n = { ...t, [part]: val }; setFuTime(n.h ? fuFrom12(n.h, n.m || '00', n.ap || 'AM') : ''); };
+                      return (
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <select value={t.h} disabled={fuNoFurther} onChange={(e) => setPart('h', e.target.value)} style={sel}>
+                            <option value="">HH</option>
+                            {FU_HOURS12.map((h) => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                          <select value={t.m} disabled={fuNoFurther} onChange={(e) => setPart('m', e.target.value)} style={sel}>
+                            <option value="">MM</option>
+                            {FU_MINUTES.map((m) => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                          <select value={t.ap} disabled={fuNoFurther} onChange={(e) => setPart('ap', e.target.value)} style={sel}>
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
