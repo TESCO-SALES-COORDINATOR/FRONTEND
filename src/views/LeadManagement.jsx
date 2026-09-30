@@ -411,6 +411,72 @@ const LeadManagement = () => {
     return cleaned ? `tel:${cleaned}` : '';
   };
 
+  // Open the follow-up modal. Remarks must be entered before a date/time is saved.
+  //   mode 'schedule' -> set/adjust the next follow-up
+  //   mode 'complete' -> log the completed call, then either reschedule or mark Completed
+  const openFollowUpModal = (lead, mode = 'schedule') => {
+    setFuLeadId(lead.id);
+    setFuMode(mode);
+    setFuRemark('');
+    setFuNoFurther(false);
+    // Pre-fill date/time from the existing follow-up when scheduling; blank when completing.
+    const p = mode === 'schedule' ? parseFollowUp(lead.followUp) : null;
+    setFuDate(p ? p.dPart : '');
+    setFuTime(p ? (p.tPart || '') : '');
+    setIsFollowUpModalOpen(true);
+  };
+
+  const cancelFollowUpModal = () => {
+    setIsFollowUpModalOpen(false);
+    setFuLeadId(null);
+    setFuRemark('');
+    setFuDate('');
+    setFuTime('');
+    setFuNoFurther(false);
+  };
+
+  const handleFollowUpSubmit = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const remark = fuRemark.trim();
+    // Rule: a follow-up is only valid once the conversation remarks are entered.
+    if (!remark) { addToast && addToast('Please enter Remarks (the client\'s response) first.', 'error'); return; }
+
+    // If not marking "no further follow-up", a date AND time are required.
+    if (!fuNoFurther && (!fuDate || !fuTime)) {
+      addToast && addToast('Set the Follow-up Date and Time, or tick "No further follow-up".', 'error');
+      return;
+    }
+
+    const formattedTime = getFormattedTimestamp();
+    setLeads(leads.map(l => {
+      if (l.id !== fuLeadId) return l;
+      const history = [...(l.history || [])];
+      let updated;
+      if (fuNoFurther) {
+        // Completed: record remarks, mark done, no new follow-up date.
+        history.push({ timestamp: formattedTime, message: 'Follow-up completed — no further follow-up', remark });
+        updated = { ...l, followUpDone: true, followUpCompletedAt: formattedTime, history };
+      } else {
+        // Scheduled: record remarks + set the exact next follow-up date/time. Fresh cycle.
+        const value = `${fuDate}T${fuTime}`;
+        history.push({ timestamp: formattedTime, message: `Follow-up scheduled for: ${fmtFollowUp(value)}`, remark });
+        updated = { ...l, followUp: value, followUpDone: false, followUpCompletedAt: '', history };
+      }
+      if (selectedLeadForTimeline && selectedLeadForTimeline.id === fuLeadId) {
+        setSelectedLeadForTimeline(updated);
+      }
+      return updated;
+    }));
+
+    setIsFollowUpModalOpen(false);
+    setFuLeadId(null);
+    setFuRemark('');
+    setFuDate('');
+    setFuTime('');
+    setFuNoFurther(false);
+    addToast && addToast(fuNoFurther ? 'Follow-up marked Completed.' : 'Follow-up scheduled.', 'success');
+  };
+
   // Build the branded TESCO STRUCTURES quotation-style document for a lead
   // Load html2pdf.js once (used to generate a real downloadable PDF file)
   const ensureHtml2Pdf = () => new Promise((resolve, reject) => {
@@ -718,6 +784,15 @@ const LeadManagement = () => {
   const [remarkLeadId, setRemarkLeadId] = useState(null);
   const [remarkNewStatus, setRemarkNewStatus] = useState('');
   const [remarkText, setRemarkText] = useState('');
+
+  // Follow-up scheduling modal (Remarks required BEFORE a follow-up date/time can be set).
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [fuLeadId, setFuLeadId] = useState(null);
+  const [fuMode, setFuMode] = useState('schedule'); // 'schedule' | 'complete'
+  const [fuRemark, setFuRemark] = useState('');
+  const [fuDate, setFuDate] = useState('');   // YYYY-MM-DD
+  const [fuTime, setFuTime] = useState('');   // HH:mm
+  const [fuNoFurther, setFuNoFurther] = useState(false); // no further follow-up -> Completed
 
   const [isGenQuoteModalOpen, setIsGenQuoteModalOpen] = useState(false);
   const [genQuoteLeadId, setGenQuoteLeadId] = useState(null);
@@ -1778,60 +1853,43 @@ const LeadManagement = () => {
                 </td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
-                    <input
-                      type="datetime-local"
-                      title={fmtFollowUp(lead.followUp)}
-                      value={toDateInputValue(lead.followUp)}
-                      onChange={(e) => updateLeadFollowUp(lead.id, e.target.value)}
-                      style={{
-                        padding: '0.35rem 0.5rem',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 'var(--radius-md, 6px)',
-                        fontSize: '0.8125rem',
-                        color: 'var(--text-main)',
-                        background: 'var(--surface-color)',
-                        outline: 'none',
-                        fontFamily: 'inherit',
-                        cursor: 'pointer'
-                      }}
-                    />
                     {(() => {
                       const st = getFollowUpState(lead);
-                      if (st === 'overdue') {
-                        return (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      const label = fmtFollowUp(lead.followUp);
+                      return (
+                        <>
+                          <span title={label} style={{ fontSize: '0.8125rem', color: 'var(--text-main)', fontWeight: '600' }}>
+                            {label || '—'}
+                          </span>
+                          {st === 'overdue' && (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#FEE2E2', color: '#DC2626', fontSize: '0.7rem', fontWeight: '700', padding: '0.1rem 0.45rem', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                               <Clock size={11} /> Overdue
                             </span>
+                          )}
+                          {st === 'completed' && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#DCFCE7', color: '#166534', fontSize: '0.7rem', fontWeight: '700', padding: '0.1rem 0.45rem', borderRadius: '999px' }}>
+                              <CheckCircle2 size={11} /> Completed
+                            </span>
+                          )}
+                          {(st === 'overdue' || st === 'upcoming') ? (
                             <button
-                              title="Mark follow-up call completed"
-                              onClick={(e) => { e.stopPropagation(); markFollowUpDone(lead.id); }}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: '#DCFCE7', color: '#166534', border: 'none', fontSize: '0.7rem', fontWeight: '700', padding: '0.15rem 0.45rem', borderRadius: '999px', cursor: 'pointer' }}
+                              title="Log the follow-up call (enter remarks)"
+                              onClick={(e) => { e.stopPropagation(); openFollowUpModal(lead, 'complete'); }}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: 'var(--primary-color)', color: '#fff', border: 'none', fontSize: '0.7rem', fontWeight: '700', padding: '0.2rem 0.55rem', borderRadius: '999px', cursor: 'pointer' }}
                             >
-                              <CheckCircle2 size={11} /> Done
+                              <Phone size={11} /> Log call
                             </button>
-                          </div>
-                        );
-                      }
-                      if (st === 'completed') {
-                        return (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#DCFCE7', color: '#166534', fontSize: '0.7rem', fontWeight: '700', padding: '0.1rem 0.45rem', borderRadius: '999px' }}>
-                            <CheckCircle2 size={11} /> Completed
-                          </span>
-                        );
-                      }
-                      if (st === 'upcoming') {
-                        return (
-                          <button
-                            title="Mark follow-up call completed"
-                            onClick={(e) => { e.stopPropagation(); markFollowUpDone(lead.id); }}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border-color)', fontSize: '0.7rem', fontWeight: '600', padding: '0.12rem 0.45rem', borderRadius: '999px', cursor: 'pointer' }}
-                          >
-                            <CheckCircle2 size={11} /> Mark done
-                          </button>
-                        );
-                      }
-                      return null;
+                          ) : (
+                            <button
+                              title="Schedule a follow-up (enter remarks first)"
+                              onClick={(e) => { e.stopPropagation(); openFollowUpModal(lead, 'schedule'); }}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: 'transparent', color: 'var(--primary-color)', border: '1px solid var(--primary-color)', fontSize: '0.7rem', fontWeight: '600', padding: '0.18rem 0.55rem', borderRadius: '999px', cursor: 'pointer' }}
+                            >
+                              <Calendar size={11} /> {st === 'completed' ? 'New follow-up' : 'Schedule'}
+                            </button>
+                          )}
+                        </>
+                      );
                     })()}
                   </div>
                 </td>
@@ -2188,6 +2246,76 @@ const LeadManagement = () => {
       )}
 
       {/* Status Change Remark Modal */}
+      {isFollowUpModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '460px', padding: '2rem', animation: 'scaleIn 0.25s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                {fuMode === 'complete' ? 'Log Follow-up Call' : 'Schedule Follow-up'}
+              </h3>
+              <button onClick={cancelFollowUpModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleFollowUpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+              {/* Step 1: Remarks (required first) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-main)', marginBottom: '0.4rem' }}>
+                  Remarks <span style={{ color: '#DC2626' }}>*</span>
+                  <span style={{ fontWeight: '400', color: 'var(--text-muted)' }}> — client's response / discussion outcome</span>
+                </label>
+                <textarea
+                  value={fuRemark}
+                  onChange={(e) => setFuRemark(e.target.value)}
+                  autoFocus
+                  rows={3}
+                  placeholder='e.g. "Client asked to call back after 2 days — comparing quotes."'
+                  style={{ width: '100%', padding: '0.6rem 0.75rem', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.875rem', fontFamily: 'inherit', color: 'var(--text-main)', background: 'var(--surface-color)', resize: 'vertical', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              {/* Step 2: Next follow-up date + time (enabled once remarks are entered) */}
+              <div style={{ opacity: fuRemark.trim() ? 1 : 0.5, pointerEvents: fuRemark.trim() ? 'auto' : 'none' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 45%' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-main)', marginBottom: '0.4rem' }}>Follow-up Date</label>
+                    <input type="date" value={fuDate} disabled={fuNoFurther} onChange={(e) => setFuDate(e.target.value)}
+                      style={{ width: '100%', padding: '0.55rem 0.6rem', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.875rem', fontFamily: 'inherit', color: 'var(--text-main)', background: 'var(--surface-color)', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ flex: '1 1 45%' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-main)', marginBottom: '0.4rem' }}>Follow-up Time</label>
+                    <input type="time" value={fuTime} disabled={fuNoFurther} onChange={(e) => setFuTime(e.target.value)}
+                      style={{ width: '100%', padding: '0.55rem 0.6rem', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.875rem', fontFamily: 'inherit', color: 'var(--text-main)', background: 'var(--surface-color)', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.85rem', fontSize: '0.85rem', color: 'var(--text-main)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={fuNoFurther} onChange={(e) => setFuNoFurther(e.target.checked)} />
+                  No further follow-up required — mark as <strong>&nbsp;Completed</strong>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.25rem' }}>
+                <button type="button" onClick={cancelFollowUpModal}
+                  style={{ padding: '0.55rem 1.1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface-color)', color: 'var(--text-main)', fontWeight: '600', cursor: 'pointer' }}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={!fuRemark.trim() || (!fuNoFurther && (!fuDate || !fuTime))}
+                  style={{ padding: '0.55rem 1.1rem', borderRadius: '8px', border: 'none', background: (!fuRemark.trim() || (!fuNoFurther && (!fuDate || !fuTime))) ? '#94A3B8' : 'var(--primary-color)', color: '#fff', fontWeight: '700', cursor: (!fuRemark.trim() || (!fuNoFurther && (!fuDate || !fuTime))) ? 'not-allowed' : 'pointer' }}>
+                  {fuNoFurther ? 'Mark Completed' : 'Save Follow-up'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {isRemarkModalOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -2481,12 +2609,19 @@ const LeadManagement = () => {
                           </span>
                         )}
                       </div>
-                      {(st === 'overdue' || st === 'upcoming') && (
+                      {(st === 'overdue' || st === 'upcoming') ? (
                         <button
-                          onClick={() => markFollowUpDone(selectedLeadForTimeline.id)}
-                          style={{ marginTop: '0.6rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: '#DCFCE7', color: '#166534', border: 'none', fontSize: '0.8rem', fontWeight: '700', padding: '0.4rem 0.75rem', borderRadius: '8px', cursor: 'pointer' }}
+                          onClick={() => openFollowUpModal(selectedLeadForTimeline, 'complete')}
+                          style={{ marginTop: '0.6rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: 'var(--primary-color)', color: '#fff', border: 'none', fontSize: '0.8rem', fontWeight: '700', padding: '0.4rem 0.75rem', borderRadius: '8px', cursor: 'pointer' }}
                         >
-                          <CheckCircle2 size={14} /> Mark follow-up call completed
+                          <Phone size={14} /> Log follow-up call
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => openFollowUpModal(selectedLeadForTimeline, 'schedule')}
+                          style={{ marginTop: '0.6rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: 'transparent', color: 'var(--primary-color)', border: '1px solid var(--primary-color)', fontSize: '0.8rem', fontWeight: '700', padding: '0.4rem 0.75rem', borderRadius: '8px', cursor: 'pointer' }}
+                        >
+                          <Calendar size={14} /> {st === 'completed' ? 'Schedule new follow-up' : 'Schedule follow-up'}
                         </button>
                       )}
                     </div>
