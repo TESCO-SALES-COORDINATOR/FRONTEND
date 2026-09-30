@@ -313,6 +313,14 @@ const LeadManagement = () => {
 
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingNoteText, setEditingNoteText] = useState('');
+  // Name of the currently logged-in user, stamped onto timeline entries this person creates.
+  const currentUserName = () => {
+    try { const u = JSON.parse(localStorage.getItem('crm_user') || 'null'); return (u && (u.name || u.email)) || 'Coordinator'; }
+    catch { return 'Coordinator'; }
+  };
+  // Tracks lead ids already reminded this session so a due follow-up alerts once, not every poll.
+  const remindedRef = useRef(new Set());
+
   // Notes/Remarks popup: compact preview in the table, full editing/viewing in a modal.
   const [notesModal, setNotesModal] = useState({ open: false, mode: 'view', leadId: null });
   const openNotesEdit = (lead) => { setEditingNoteId(lead.id); setEditingNoteText(lead.notes || ''); setNotesModal({ open: true, mode: 'edit', leadId: lead.id }); };
@@ -437,6 +445,22 @@ const LeadManagement = () => {
     return ms < nowTick ? 'overdue' : 'upcoming';
   };
 
+  // In-app follow-up reminder: when a scheduled follow-up falls due (or is overdue),
+  // surface a one-time alert identifying the lead(s). Re-checks as the clock ticks and
+  // on each data refresh; each lead only alerts once per session (remindedRef).
+  useEffect(() => {
+    if (!leadsLoaded) return;
+    const due = (leads || []).filter((l) =>
+      l && !String(l.status || '').toLowerCase().includes('junk') && getFollowUpState(l) === 'overdue'
+    );
+    const fresh = due.filter((l) => !remindedRef.current.has(l.id));
+    if (!fresh.length) return;
+    fresh.forEach((l) => remindedRef.current.add(l.id));
+    const names = fresh.slice(0, 3).map((l) => l.name || l.customerName || l.id).join(', ');
+    const extra = fresh.length > 3 ? ` +${fresh.length - 3} more` : '';
+    if (addToast) addToast(`Follow-up call due: ${names}${extra}`, 'info');
+  }, [leads, leadsLoaded, nowTick]);
+
   // Record that the follow-up call was completed: clears Overdue, marks done.
   const markFollowUpDone = (id) => {
     const formattedTime = getFormattedTimestamp();
@@ -444,6 +468,7 @@ const LeadManagement = () => {
       if (l.id !== id) return l;
       const newHistory = [...(l.history || []), {
         timestamp: formattedTime,
+        user: currentUserName(),
         message: 'Follow-up call completed'
       }];
       const updatedLead = { ...l, followUpDone: true, followUpCompletedAt: formattedTime, history: newHistory };
@@ -503,14 +528,15 @@ const LeadManagement = () => {
       if (l.id !== fuLeadId) return l;
       const history = [...(l.history || [])];
       let updated;
+      const actor = currentUserName();
       if (fuNoFurther) {
         // Completed: record remarks, mark done, no new follow-up date.
-        history.push({ timestamp: formattedTime, message: 'Follow-up completed — no further follow-up', remark });
+        history.push({ timestamp: formattedTime, user: actor, message: 'Follow-up completed — no further follow-up', remark });
         updated = { ...l, followUpDone: true, followUpCompletedAt: formattedTime, history };
       } else {
         // Scheduled: record remarks + set the exact next follow-up date/time. Fresh cycle.
         const value = `${fuDate}T${fuTime}`;
-        history.push({ timestamp: formattedTime, message: `Follow-up scheduled for: ${fmtFollowUp(value)}`, remark });
+        history.push({ timestamp: formattedTime, user: actor, message: `Follow-up scheduled for: ${fmtFollowUp(value)}`, remark });
         updated = { ...l, followUp: value, followUpDone: false, followUpCompletedAt: '', history };
       }
       if (selectedLeadForTimeline && selectedLeadForTimeline.id === fuLeadId) {
@@ -2855,7 +2881,7 @@ const LeadManagement = () => {
                             gap: '0.25rem'
                           }}>
                             <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '600' }}>
-                              {h.timestamp || h.date}
+                              {h.timestamp || h.date}{(h.user || h.by) ? ` — ${h.user || h.by}` : ''}
                             </span>
                             <span style={{ color: 'var(--text-main)', fontWeight: '500', lineHeight: '1.4' }}>
                               {h.message || h.event}
