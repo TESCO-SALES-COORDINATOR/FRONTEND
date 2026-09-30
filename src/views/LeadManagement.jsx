@@ -1734,7 +1734,7 @@ const LeadManagement = () => {
                 </th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Follow-up</th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Actions</th>
-                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Notes</th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'left', whiteSpace: 'nowrap', minWidth: '240px' }}>Notes</th>
             </tr>
           </thead>
           <tbody>
@@ -1967,25 +1967,25 @@ const LeadManagement = () => {
                     </button>
                   </div>
                 </td>
-                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', maxWidth: '120px' }} onClick={(e) => e.stopPropagation()}>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'left', minWidth: '240px', maxWidth: '320px', verticalAlign: 'top' }} onClick={(e) => e.stopPropagation()}>
                   {editingNoteId === lead.id ? (
-                    <input
+                    <textarea
                       autoFocus
-                      type="text"
+                      rows={3}
                       value={editingNoteText}
                       onChange={(e) => setEditingNoteText(e.target.value)}
                       onBlur={() => saveNote(lead.id)}
-                      onKeyDown={(e) => e.key === 'Enter' && saveNote(lead.id)}
-                      style={{ width: '100%', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--primary-color)', outline: 'none', fontSize: '0.8125rem' }}
+                      placeholder="Type a remark…"
+                      style={{ width: '100%', minHeight: '68px', resize: 'vertical', padding: '0.45rem 0.6rem', borderRadius: '6px', border: '1px solid var(--primary-color)', outline: 'none', fontSize: '0.8125rem', lineHeight: 1.5, fontFamily: 'inherit', boxSizing: 'border-box' }}
                     />
                   ) : (
                     <div
                       onClick={() => { setEditingNoteId(lead.id); setEditingNoteText(lead.notes || ''); }}
                       title="Click to edit notes"
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}
+                      style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer' }}
                     >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{lead.notes || 'Add note...'}</span>
-                      <Edit2 size={12} style={{ opacity: 0.5, flexShrink: 0 }} />
+                      <span style={{ flex: 1, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.5 }}>{lead.notes || 'Add note...'}</span>
+                      <Edit2 size={12} style={{ opacity: 0.5, flexShrink: 0, marginTop: '2px' }} />
                     </div>
                   )}
                 </td>
