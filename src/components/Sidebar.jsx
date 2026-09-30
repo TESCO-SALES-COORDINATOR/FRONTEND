@@ -10,7 +10,9 @@ import {
   FolderOpen,
   CreditCard,
   Bell,
-  Settings
+  Settings,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 const menuItems = [
@@ -28,7 +30,7 @@ const bottomItems = [
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
-const Sidebar = () => {
+const Sidebar = ({ collapsed = false, onToggle }) => {
   // Keep the account holder reactive: re-read the merged profile whenever Settings
   // saves (custom event) or another tab changes it (native `storage` event), so the
   // sidebar reflects a saved name/role instantly with no manual refresh.
@@ -49,21 +51,40 @@ const Sidebar = () => {
   const userInitials = userName.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'IT';
   return (
     <div style={{
-      width: '260px',
+      width: collapsed ? '76px' : '260px',
       backgroundColor: 'var(--sidebar-bg)',
       color: 'var(--sidebar-text)',
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      padding: '1.5rem 1rem'
+      padding: collapsed ? '1.5rem 0.6rem' : '1.5rem 1rem',
+      transition: 'width 0.2s ease, padding 0.2s ease',
+      flexShrink: 0
     }}>
-      <div style={{ marginBottom: '2rem', padding: '0 0.75rem' }}>
-        <h2 style={{ color: 'white', fontSize: '1.4rem', fontWeight: '800', letterSpacing: '0.3px', margin: 0 }}>
-          SalesCRM
-        </h2>
-        <div style={{ color: '#8A8FC5', fontSize: '0.75rem', fontWeight: '500', marginTop: '0.25rem' }}>
-          Tesco Structures
-        </div>
+      <div style={{ marginBottom: '2rem', padding: collapsed ? '0' : '0 0.75rem', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between', gap: '0.5rem' }}>
+        {!collapsed && (
+          <div>
+            <h2 style={{ color: 'white', fontSize: '1.4rem', fontWeight: '800', letterSpacing: '0.3px', margin: 0 }}>
+              SalesCRM
+            </h2>
+            <div style={{ color: '#8A8FC5', fontSize: '0.75rem', fontWeight: '500', marginTop: '0.25rem' }}>
+              Tesco Structures
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={{
+            background: 'rgba(255,255,255,0.08)', border: 'none', color: '#C4C7E8',
+            width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+          }}
+        >
+          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        </button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
@@ -71,11 +92,13 @@ const Sidebar = () => {
           <NavLink
             key={item.path}
             to={item.path}
+            title={collapsed ? item.label : undefined}
             style={({ isActive }) => ({
               display: 'flex',
               alignItems: 'center',
-              gap: '0.85rem',
-              padding: '0.8rem 0.9rem',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              gap: collapsed ? '0' : '0.85rem',
+              padding: collapsed ? '0.8rem 0' : '0.8rem 0.9rem',
               borderRadius: '0.7rem',
               textDecoration: 'none',
               color: isActive ? '#FFFFFF' : '#C4C7E8',
@@ -89,7 +112,7 @@ const Sidebar = () => {
             {({ isActive }) => (
               <>
                 <item.icon size={20} strokeWidth={2} color={isActive ? '#A5B4FC' : '#9FA3CE'} />
-                {item.label}
+                {!collapsed && item.label}
               </>
             )}
           </NavLink>
@@ -101,11 +124,13 @@ const Sidebar = () => {
              <NavLink
              key={item.path}
              to={item.path}
+             title={collapsed ? item.label : undefined}
              style={({ isActive }) => ({
                display: 'flex',
                alignItems: 'center',
-               gap: '0.85rem',
-               padding: '0.8rem 0.9rem',
+               justifyContent: collapsed ? 'center' : 'flex-start',
+               gap: collapsed ? '0' : '0.85rem',
+               padding: collapsed ? '0.8rem 0' : '0.8rem 0.9rem',
                borderRadius: '0.7rem',
                textDecoration: 'none',
                color: isActive ? '#FFFFFF' : '#C4C7E8',
@@ -118,7 +143,7 @@ const Sidebar = () => {
              {({ isActive }) => (
                <>
                  <item.icon size={20} strokeWidth={2} color={isActive ? '#A5B4FC' : '#9FA3CE'} />
-                 {item.label}
+                 {!collapsed && item.label}
                </>
              )}
            </NavLink>
@@ -127,11 +152,12 @@ const Sidebar = () => {
 
       <div style={{
         marginTop: '1.5rem',
-        padding: '1rem',
+        padding: collapsed ? '0.6rem' : '1rem',
         backgroundColor: 'rgba(0,0,0,0.2)',
         borderRadius: 'var(--radius-lg)',
         display: 'flex',
         alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'flex-start',
         gap: '0.75rem'
       }}>
         <div style={{
@@ -143,14 +169,17 @@ const Sidebar = () => {
           alignItems: 'center',
           justifyContent: 'center',
           color: 'white',
-          fontWeight: 'bold'
-        }}>
+          fontWeight: 'bold',
+          flexShrink: 0
+        }} title={collapsed ? `${userName} · ${userRole}` : undefined}>
           {userInitials}
         </div>
-        <div>
-          <div style={{ color: 'white', fontSize: '0.875rem', fontWeight: '600' }}>{userName}</div>
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>{userRole}</div>
-        </div>
+        {!collapsed && (
+          <div>
+            <div style={{ color: 'white', fontSize: '0.875rem', fontWeight: '600' }}>{userName}</div>
+            <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>{userRole}</div>
+          </div>
+        )}
       </div>
     </div>
   );

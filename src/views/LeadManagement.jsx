@@ -205,14 +205,23 @@ const LeadManagement = () => {
     return () => { cancelled = true; clearInterval(poll); };
   }, []);
 
-  // Sync leads to backend API whenever they change
+  // Sync leads to backend API whenever they change — DEBOUNCED.
+  // A whole-array POST on every keystroke/assignment could overlap and arrive
+  // out of order, letting an older snapshot overwrite newer changes (assigned
+  // leads reverting). Debouncing coalesces rapid changes into ONE final write
+  // with the complete, latest state.
+  const bulkTimerRef = useRef(null);
   useEffect(() => {
     if (!leadsLoaded) return;
-    fetch(`${API_URL}/bulk`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(leads)
-    }).catch(err => console.error('Failed to sync leads to API:', err));
+    if (bulkTimerRef.current) clearTimeout(bulkTimerRef.current);
+    bulkTimerRef.current = setTimeout(() => {
+      fetch(`${API_URL}/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(leads)
+      }).catch(err => console.error('Failed to sync leads to API:', err));
+    }, 800);
+    return () => { if (bulkTimerRef.current) clearTimeout(bulkTimerRef.current); };
   }, [leads, leadsLoaded]);
 
   // Live appointment + quotation records so the overview cards reflect real data
@@ -1260,21 +1269,25 @@ const LeadManagement = () => {
 
   const updateLeadManager = (id, newManager) => {
     const formattedTime = getFormattedTimestamp();
-    setLeads(leads.map(l => {
-      if (l.id === id) {
-        if (l.manager === newManager) return l;
-        const newHistory = [...(l.history || []), {
-          timestamp: formattedTime,
-          message: `Updated assignTo to: ${newManager}`
-        }];
-        const updatedLead = { ...l, manager: newManager, history: newHistory };
-        if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) {
-          setSelectedLeadForTimeline(updatedLead);
-        }
-        return updatedLead;
-      }
-      return l;
-    }));
+    const target = leads.find(l => l.id === id);
+    if (!target || target.manager === newManager) return;
+    const newHistory = [...(target.history || []), {
+      timestamp: formattedTime,
+      message: `Updated assignTo to: ${newManager}`
+    }];
+    const updatedLead = { ...target, manager: newManager, history: newHistory };
+    setLeads(leads.map(l => (l.id === id ? updatedLead : l)));
+    if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) {
+      setSelectedLeadForTimeline(updatedLead);
+    }
+    // Persist the assignment atomically with a targeted PUT so it can never be
+    // clobbered by an out-of-order whole-array bulk sync (which caused assigned
+    // leads to intermittently revert / disappear from the Manager/BDE portals).
+    fetch(`${API_URL}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manager: newManager, history: newHistory }),
+    }).catch(err => console.error('Failed to persist assignment:', err));
   };
 
   const updateLeadDesignReq = (id, newValue) => {
