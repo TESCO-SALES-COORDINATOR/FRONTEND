@@ -344,12 +344,71 @@ const LeadManagement = () => {
         timestamp: formattedTime,
         message: value ? `Updated follow-up date to: ${value}` : 'Cleared follow-up date'
       }];
-      const updatedLead = { ...l, followUp: value || 'No Date', history: newHistory };
+      // Setting a new follow-up date/time starts a fresh cycle, so clear any
+      // previously-recorded "call completed" flag (a new call is now expected).
+      const updatedLead = { ...l, followUp: value || 'No Date', followUpDone: false, followUpCompletedAt: '', history: newHistory };
       if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) {
         setSelectedLeadForTimeline(updatedLead);
       }
       return updatedLead;
     }));
+  };
+
+  // --- Follow-up / Overdue tracking (derived on the frontend; no API changes) ---
+  // A ticking clock so an "Overdue" status appears the moment a follow-up time
+  // passes, without needing a page refresh.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Convert a stored follow-up value into an absolute millisecond deadline.
+  // When only a date was set (no time), end-of-day is treated as the deadline.
+  const followUpMillis = (v) => {
+    const p = parseFollowUp(v);
+    if (!p) return null;
+    const dt = new Date(`${p.dPart}T${p.tPart || '23:59'}`);
+    const ms = dt.getTime();
+    return isNaN(ms) ? null : ms;
+  };
+
+  // Derive a lead's follow-up state:
+  //   'completed' -> the call was made and recorded
+  //   'overdue'   -> the scheduled date/time has passed with no call recorded
+  //   'upcoming'  -> a follow-up is scheduled in the future
+  //   'none'      -> no follow-up date set
+  const getFollowUpState = (lead) => {
+    if (!lead) return 'none';
+    if (lead.followUpDone) return 'completed';
+    const ms = followUpMillis(lead.followUp);
+    if (ms == null) return 'none';
+    return ms < nowTick ? 'overdue' : 'upcoming';
+  };
+
+  // Record that the follow-up call was completed: clears Overdue, marks done.
+  const markFollowUpDone = (id) => {
+    const formattedTime = getFormattedTimestamp();
+    setLeads(leads.map(l => {
+      if (l.id !== id) return l;
+      const newHistory = [...(l.history || []), {
+        timestamp: formattedTime,
+        message: 'Follow-up call completed'
+      }];
+      const updatedLead = { ...l, followUpDone: true, followUpCompletedAt: formattedTime, history: newHistory };
+      if (selectedLeadForTimeline && selectedLeadForTimeline.id === id) {
+        setSelectedLeadForTimeline(updatedLead);
+      }
+      return updatedLead;
+    }));
+  };
+
+  // Build a tel: link from a phone value (digits only, keeps a leading +).
+  const telHref = (v) => {
+    const s = String(v ?? '').trim();
+    if (!s) return '';
+    const cleaned = s.replace(/[^\d+]/g, '');
+    return cleaned ? `tel:${cleaned}` : '';
   };
 
   // Build the branded TESCO STRUCTURES quotation-style document for a lead
@@ -1593,7 +1652,18 @@ const LeadManagement = () => {
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.location || '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-main)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.projectType}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-main)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.budget || '-'}</td>
-                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.phone}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                  {lead.phone ? (
+                    <a
+                      href={telHref(lead.phone)}
+                      title={`Call ${lead.phone}`}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: 'var(--primary-color)', fontWeight: '600', textDecoration: 'none' }}
+                    >
+                      <Phone size={12} />
+                      {lead.phone}
+                    </a>
+                  ) : '-'}
+                </td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.email || '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.city || '-'}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.timeline ? String(lead.timeline).replace(/_/g, ' ') : '-'}</td>
@@ -1707,23 +1777,63 @@ const LeadManagement = () => {
                   </select>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="datetime-local"
-                    title={fmtFollowUp(lead.followUp)}
-                    value={toDateInputValue(lead.followUp)}
-                    onChange={(e) => updateLeadFollowUp(lead.id, e.target.value)}
-                    style={{
-                      padding: '0.35rem 0.5rem',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md, 6px)',
-                      fontSize: '0.8125rem',
-                      color: 'var(--text-main)',
-                      background: 'var(--surface-color)',
-                      outline: 'none',
-                      fontFamily: 'inherit',
-                      cursor: 'pointer'
-                    }}
-                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
+                    <input
+                      type="datetime-local"
+                      title={fmtFollowUp(lead.followUp)}
+                      value={toDateInputValue(lead.followUp)}
+                      onChange={(e) => updateLeadFollowUp(lead.id, e.target.value)}
+                      style={{
+                        padding: '0.35rem 0.5rem',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-md, 6px)',
+                        fontSize: '0.8125rem',
+                        color: 'var(--text-main)',
+                        background: 'var(--surface-color)',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                        cursor: 'pointer'
+                      }}
+                    />
+                    {(() => {
+                      const st = getFollowUpState(lead);
+                      if (st === 'overdue') {
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#FEE2E2', color: '#DC2626', fontSize: '0.7rem', fontWeight: '700', padding: '0.1rem 0.45rem', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                              <Clock size={11} /> Overdue
+                            </span>
+                            <button
+                              title="Mark follow-up call completed"
+                              onClick={(e) => { e.stopPropagation(); markFollowUpDone(lead.id); }}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: '#DCFCE7', color: '#166534', border: 'none', fontSize: '0.7rem', fontWeight: '700', padding: '0.15rem 0.45rem', borderRadius: '999px', cursor: 'pointer' }}
+                            >
+                              <CheckCircle2 size={11} /> Done
+                            </button>
+                          </div>
+                        );
+                      }
+                      if (st === 'completed') {
+                        return (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#DCFCE7', color: '#166534', fontSize: '0.7rem', fontWeight: '700', padding: '0.1rem 0.45rem', borderRadius: '999px' }}>
+                            <CheckCircle2 size={11} /> Completed
+                          </span>
+                        );
+                      }
+                      if (st === 'upcoming') {
+                        return (
+                          <button
+                            title="Mark follow-up call completed"
+                            onClick={(e) => { e.stopPropagation(); markFollowUpDone(lead.id); }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border-color)', fontSize: '0.7rem', fontWeight: '600', padding: '0.12rem 0.45rem', borderRadius: '999px', cursor: 'pointer' }}
+                          >
+                            <CheckCircle2 size={11} /> Mark done
+                          </button>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
@@ -2314,6 +2424,75 @@ const LeadManagement = () => {
               backgroundColor: '#F8FAFC'
             }}>
 
+              {/* Contact & Follow-up card */}
+              {(() => {
+                const st = getFollowUpState(selectedLeadForTimeline);
+                const fu = fmtFollowUp(selectedLeadForTimeline.followUp);
+                const phone = selectedLeadForTimeline.phone;
+                return (
+                  <div style={{
+                    background: 'var(--surface-color)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '12px',
+                    padding: '1rem 1.25rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.85rem'
+                  }}>
+                    <div style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                      {selectedLeadForTimeline.name || 'Lead'}
+                    </div>
+
+                    {/* Prominent, clickable phone number */}
+                    <div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: '0.3rem' }}>
+                        Customer Phone
+                      </div>
+                      {phone ? (
+                        <a
+                          href={telHref(phone)}
+                          title={`Call ${phone}`}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--primary-color)', color: '#fff', fontSize: '1.05rem', fontWeight: '700', padding: '0.5rem 0.9rem', borderRadius: '10px', textDecoration: 'none' }}
+                        >
+                          <Phone size={16} /> {phone}
+                        </a>
+                      ) : (
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No phone number on file</div>
+                      )}
+                    </div>
+
+                    {/* Follow-up date/time with status */}
+                    <div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: '0.3rem' }}>
+                        Follow-up
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-main)' }}>
+                          {fu || 'No follow-up scheduled'}
+                        </span>
+                        {st === 'overdue' && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#FEE2E2', color: '#DC2626', fontSize: '0.72rem', fontWeight: '700', padding: '0.15rem 0.55rem', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                            <Clock size={12} /> Overdue
+                          </span>
+                        )}
+                        {st === 'completed' && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#DCFCE7', color: '#166534', fontSize: '0.72rem', fontWeight: '700', padding: '0.15rem 0.55rem', borderRadius: '999px' }}>
+                            <CheckCircle2 size={12} /> Completed
+                          </span>
+                        )}
+                      </div>
+                      {(st === 'overdue' || st === 'upcoming') && (
+                        <button
+                          onClick={() => markFollowUpDone(selectedLeadForTimeline.id)}
+                          style={{ marginTop: '0.6rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: '#DCFCE7', color: '#166534', border: 'none', fontSize: '0.8rem', fontWeight: '700', padding: '0.4rem 0.75rem', borderRadius: '8px', cursor: 'pointer' }}
+                        >
+                          <CheckCircle2 size={14} /> Mark follow-up call completed
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Timeline Section */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
