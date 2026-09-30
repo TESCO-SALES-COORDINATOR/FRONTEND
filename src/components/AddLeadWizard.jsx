@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, Check, ArrowRight, ArrowLeft, Building2, ClipboardList, CalendarDays, IndianRupee, PenLine, Plus, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Check, ArrowRight, ArrowLeft, Building2, ClipboardList, CalendarDays, IndianRupee, PenLine, Plus, Trash2, Paperclip, FileText } from 'lucide-react';
 import { api } from '../api/client';
+import { uploadManyToCloudinary, isUploadConfigured, formatBytes } from '../utils/cloudinary';
 
 const STEPS = ['Basic Info', 'Project Details', 'Quotations', 'Order Confirm', 'Review'];
 
@@ -168,10 +169,13 @@ const YesNo = ({ label, value, onChange }) => (
   </div>
 );
 
-const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
+const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null, notify }) => {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(emptyForm);
   const [managers, setManagers] = useState([]);
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const isEditing = Boolean(editLead);
 
@@ -179,7 +183,37 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
     if (!isOpen) return;
     setStep(1);
     setForm(editLead ? leadToForm(editLead) : emptyForm);
+    setAttachments(Array.isArray(editLead?.attachments) ? editLead.attachments : []);
   }, [isOpen, editLead]);
+
+  // Upload picked files straight to Cloudinary and append the returned records.
+  const handleFilesPicked = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    if (!isUploadConfigured()) {
+      const msg = 'File upload is not configured. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET.';
+      notify ? notify(msg, 'error') : alert(msg);
+      return;
+    }
+    setUploading(true);
+    try {
+      const { ok, errors } = await uploadManyToCloudinary(files);
+      if (ok.length) setAttachments((prev) => [...prev, ...ok]);
+      if (errors.length) {
+        const msg = errors.join(' • ');
+        notify ? notify(msg, 'error') : alert(msg);
+      } else if (ok.length && notify) {
+        notify(`${ok.length} file${ok.length > 1 ? 's' : ''} uploaded.`, 'success');
+      }
+    } catch (e) {
+      const msg = e?.message || 'Upload failed.';
+      notify ? notify(msg, 'error') : alert(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAttachment = (idx) => setAttachments((prev) => prev.filter((_, i) => i !== idx));
 
   // Load the list of Sales Managers for the "Assigned Manager" dropdown.
   // Prefer the dedicated endpoint; if unavailable, derive the names from existing leads.
@@ -243,7 +277,7 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
   const addMilestone = () => setForm((f) => ({ ...f, ocMilestones: [...f.ocMilestones, { term: '', percentage: '', value: '' }] }));
   const removeMilestone = (idx) => setForm((f) => ({ ...f, ocMilestones: f.ocMilestones.filter((_, i) => i !== idx) }));
 
-  const reset = () => { setForm(emptyForm); setStep(1); };
+  const reset = () => { setForm(emptyForm); setStep(1); setAttachments([]); };
   const close = () => { reset(); onClose(); };
 
   // Prefill the Order Confirm form from the earlier steps when the user lands on it.
@@ -287,6 +321,7 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
       status: form.status,
       budget: form.projectValue || form.ocQuotedPrice,
       notes: `Project: ${form.projectType} / ${form.structureType}. Site: ${form.siteCondition}. Area: ${form.approximateArea || '-'} sq.ft.`,
+      attachments,
       _wizard: form,
     });
     reset();
@@ -462,6 +497,56 @@ const AddLeadWizard = ({ isOpen, onClose, onSave, editLead = null }) => {
                 <Field label="Upload File (PDF)">
                   <input type="file" accept="application/pdf" style={{ ...inputStyle, padding: '0.5rem' }} onChange={(e) => set('fileName', e.target.files?.[0]?.name || '')} />
                 </Field>
+              </div>
+
+              {/* Attachments — files upload directly to Cloudinary and are stored on the lead */}
+              <div style={{ marginTop: '1.75rem' }}>
+                <label style={labelStyle}>Attachments</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => { handleFilesPicked(e.target.files); e.target.value = ''; }}
+                />
+                <div
+                  onDragOver={(e) => { e.preventDefault(); }}
+                  onDrop={(e) => { e.preventDefault(); handleFilesPicked(e.dataTransfer.files); }}
+                  onClick={() => !uploading && fileInputRef.current && fileInputRef.current.click()}
+                  style={{
+                    border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-md)',
+                    padding: '1.25rem', textAlign: 'center', cursor: uploading ? 'default' : 'pointer',
+                    background: '#F8FAFC', color: 'var(--text-muted)'
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    onClick={(e) => { e.stopPropagation(); if (!uploading && fileInputRef.current) fileInputRef.current.click(); }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1.1rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', background: 'var(--surface-color)', color: 'var(--sidebar-bg)', fontWeight: 600, cursor: uploading ? 'not-allowed' : 'pointer', fontSize: '0.85rem', opacity: uploading ? 0.6 : 1 }}
+                  >
+                    <Paperclip size={15} /> {uploading ? 'Uploading…' : 'Add file'}
+                  </button>
+                  <div style={{ fontSize: '0.8rem', marginTop: '0.6rem' }}>or drag &amp; drop files here</div>
+                </div>
+
+                {attachments.length > 0 && (
+                  <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {attachments.map((a, idx) => (
+                      <div key={a.publicId || a.url || idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.6rem 0.9rem', background: 'var(--surface-color)' }}>
+                        <FileText size={18} style={{ color: 'var(--sidebar-bg)', flexShrink: 0 }} />
+                        <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-main)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {a.name || 'file'}
+                        </a>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', flexShrink: 0 }}>{formatBytes(a.size)}</span>
+                        <button type="button" onClick={() => removeAttachment(idx)} title="Remove file"
+                          style={{ width: '32px', height: '32px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', background: '#FEE2E2', color: '#DC2626', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import AddLeadWizard from '../components/AddLeadWizard';
 import { Search, Filter, Phone, MoreVertical, X, Edit2, Mail, Trash2, Users, Flame, CalendarCheck, Clock, Calendar, ChevronDown, ChevronUp, MapPin, Activity, User, FileText, UserPlus, Sparkles, Thermometer, Snowflake, FileSignature, HandshakeIcon, CheckCircle2, XCircle, Trash, Send, ArrowUpDown, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { statusColor, sourceColor } from '../theme/statusColors';
+import { formatBytes } from '../utils/cloudinary';
 
 const LEAD_SOURCES = [
   'Referral',
@@ -101,12 +102,24 @@ const LeadManagement = () => {
   // Load leads from backend API on mount, then keep polling so leads created by
   // the n8n `lead-mail-PRODUCTION` automation appear automatically — no manual import.
   //   • First load  -> replace state with whatever the DB holds.
-  //   • Each poll   -> MERGE in any server leads we don't already have locally,
-  //                    without overwriting leads already in state (so in-progress
-  //                    edits and the bulk-sync round-trip are never clobbered).
+  //   • Each poll   -> pull in brand-new leads AND refresh existing leads with the
+  //                    latest server version so changes made in the Head / Manager /
+  //                    BDE portals (status, follow-up, remarks, timeline, assignment,
+  //                    etc.) appear here automatically — WITHOUT clobbering a lead the
+  //                    coordinator has edited locally but not yet synced. A lead is
+  //                    only replaced by the server copy when the local copy still
+  //                    matches what we last saw on the server (i.e. no pending edit).
+  const serverSigRef = useRef(new Map()); // id -> signature of the lead as last seen on the server
+  const sigOf = (l) => { try { return JSON.stringify(l); } catch { return String(l && l.id); } };
   useEffect(() => {
     let cancelled = false;
     let firstLoad = true;
+
+    const snapshot = (arr) => {
+      const m = new Map();
+      arr.forEach((l) => { if (l && l.id) m.set(l.id, sigOf(l)); });
+      return m;
+    };
 
     const loadLeads = async () => {
       try {
@@ -117,13 +130,33 @@ const LeadManagement = () => {
         if (firstLoad) {
           setLeads(data);
         } else {
-          // Append only brand-new leads (by id) coming from the automation.
+          const prevServerSig = serverSigRef.current; // what the server showed us last poll
           setLeads(prev => {
-            const known = new Set(prev.map(l => l.id));
-            const fresh = data.filter(l => l && l.id && !known.has(l.id));
-            return fresh.length ? [...prev, ...fresh] : prev;
+            const prevById = new Map(prev.map(l => [l.id, l]));
+            const seen = new Set();
+            const merged = [];
+            for (const s of data) {
+              if (!s || !s.id) continue;
+              seen.add(s.id);
+              const local = prevById.get(s.id);
+              if (!local) { merged.push(s); continue; }           // brand-new lead from server
+              // Adopt the server version only if the coordinator hasn't changed this
+              // lead locally since the last poll (local still equals last server copy).
+              const unchangedLocally = sigOf(local) === prevServerSig.get(s.id);
+              merged.push(unchangedLocally ? s : local);
+            }
+            // Preserve any local-only leads the server hasn't returned yet
+            // (e.g. just created, mid bulk-sync round-trip).
+            for (const l of prev) if (l && l.id && !seen.has(l.id)) merged.push(l);
+            // If nothing actually changed, keep the same reference so we don't
+            // trigger a needless bulk-sync round-trip.
+            const changed = merged.length !== prev.length
+              || merged.some((l, i) => l !== prev[i]);
+            return changed ? merged : prev;
           });
         }
+        // Remember exactly what the server returned this poll for the next comparison.
+        serverSigRef.current = snapshot(data);
       } catch (err) {
         console.error('Failed to load leads from API:', err);
         if (firstLoad && !cancelled) setLeads([]);
@@ -134,7 +167,7 @@ const LeadManagement = () => {
     };
 
     loadLeads();
-    const poll = setInterval(loadLeads, 15000); // auto-show automation imports
+    const poll = setInterval(loadLeads, 15000); // auto-show automation imports + cross-portal changes
     return () => { cancelled = true; clearInterval(poll); };
   }, []);
 
@@ -819,7 +852,9 @@ const LeadManagement = () => {
   // The "All Managers" dropdown (headerFilters.assignTo) scopes every overview count too,
   // not just the table — selecting a manager shows only that manager's numbers.
   const selMgr = headerFilters.assignTo;
-  const byMgr = (m) => selMgr === 'All' || (m || 'Unassigned') === selMgr;
+  // Match the assigned manager case/space-insensitively so a lead always buckets under
+  // the same manager the Manager portal shows it to (which also matches loosely).
+  const byMgr = (m) => selMgr === 'All' || String(m || 'Unassigned').trim().toLowerCase() === String(selMgr || '').trim().toLowerCase();
   // Date-range predicate shared by the overview counts AND the leads table, so the KPI
   // numbers always reflect the calendar range chosen at the top of the page.
   const inDateRange = (v) => {
@@ -899,7 +934,7 @@ const LeadManagement = () => {
     }
 
     if (headerFilters.assignTo !== 'All') {
-      if (l.manager !== headerFilters.assignTo) return false;
+      if (String(l.manager || '').trim().toLowerCase() !== String(headerFilters.assignTo || '').trim().toLowerCase()) return false;
     }
 
     return true;
@@ -1290,6 +1325,7 @@ const LeadManagement = () => {
           notes: data.notes,
           manager: data.manager || l.manager || 'Unassigned',
           followUp: data.followUp || l.followUp || 'Pending',
+          attachments: Array.isArray(data.attachments) ? data.attachments : (l.attachments || []),
           _wizard: data._wizard,
           history: [...(l.history || []), { timestamp: formattedTime, message: 'Lead details updated via edit form' }]
         };
@@ -1328,6 +1364,7 @@ const LeadManagement = () => {
       manager: data.manager || 'Unassigned',
       followUp: data.followUp || 'Pending',
       priority: 'Medium',
+      attachments: Array.isArray(data.attachments) ? data.attachments : [],
       history: [
         { timestamp: formattedTime, message: `Lead created from ${data.source || 'Manual Form'}` }
       ]
@@ -1967,6 +2004,7 @@ const LeadManagement = () => {
         editLead={editLead}
         onClose={() => { setIsModalOpen(false); setEditLead(null); }}
         onSave={handleWizardSave}
+        notify={addToast}
       />
 
       {/* Move to Junk confirmation modal (soft delete) */}
@@ -2631,6 +2669,39 @@ const LeadManagement = () => {
                   </div>
                 );
               })()}
+
+              {/* Attached Files */}
+              <div style={{
+                background: 'var(--surface-color)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '12px',
+                padding: '1rem 1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <FileText size={16} style={{ color: 'var(--primary-color)' }} />
+                  <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-main)' }}>Attached Files</h4>
+                </div>
+                {Array.isArray(selectedLeadForTimeline.attachments) && selectedLeadForTimeline.attachments.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {selectedLeadForTimeline.attachments.map((a, idx) => (
+                      <div key={a.publicId || a.url || idx} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+                        <FileText size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                        <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600, color: 'var(--primary-color)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {a.name || 'file'}
+                        </a>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0 }}>{formatBytes(a.size)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                    No files attached to this lead.
+                  </div>
+                )}
+              </div>
 
               {/* Timeline Section */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
