@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, User, Phone, MapPin, ChevronLeft, ChevronRight, CalendarCheck2, CalendarClock, CheckCircle2, Flag, X, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import DateRangePicker from '../components/DateRangePicker';
 
 const APPT_API = 'https://api-salescoordinator.tescomanagement.com/api/appointments';
 
@@ -134,6 +135,7 @@ const Appointments = () => {
   const [rescheduleAptId, setRescheduleAptId] = useState(null);
   const [rescheduleDetails, setRescheduleDetails] = useState({ date: '', timeStart: '', timeEnd: '', reason: '' });
   const [selectedManager, setSelectedManager] = useState('All');
+  const [dateRange, setDateRange] = useState({ start: '', end: '' }); // From/To filter; empty = show all
   const uniqueManagers = Array.from(new Set(appointments.map(a => a.manager).filter(Boolean)));
 
   // The lead id an appointment/visit belongs to. Prefer the stored leadId; otherwise recover
@@ -191,12 +193,25 @@ const Appointments = () => {
     return !leadHasAppointment(l) && !leadHasVisit(l);
   });
 
+  /* ── From/To date filter (ISO "YYYY-MM-DD"); empty = all appointments shown ── */
+  const inDateRange = (v) => {
+    if (!dateRange.start || !dateRange.end) return true;
+    const t = new Date(v).getTime();
+    if (isNaN(t)) return true; // undated records are never hidden
+    const sp = String(dateRange.start).split('-').map(Number);
+    const ep = String(dateRange.end).split('-').map(Number);
+    const s = new Date(sp[0], sp[1] - 1, sp[2], 0, 0, 0, 0);
+    const e = new Date(ep[0], ep[1] - 1, ep[2], 23, 59, 59, 999);
+    return t >= s.getTime() && t <= e.getTime();
+  };
+
   /* ── Filter — appointments only (visits live on the manager side) ── */
   const filtered = appointments.filter(a => {
     if (isVisitType(a)) return false;
     const matchesManager = selectedManager === 'All' || a.manager === selectedManager;
     const matchesDay = !selectedDay || a.date === selectedDay;
-    return matchesManager && matchesDay;
+    const matchesRange = inDateRange(a.date || a.createdAt);
+    return matchesManager && matchesDay && matchesRange;
   });
 
   /* ── "Last 30 days" range label (dynamic, so it never goes stale) ── */
@@ -388,9 +403,11 @@ const Appointments = () => {
 
           {/* Date range + Manager filter */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface-color)', padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid var(--border-color)', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
-              <CalendarIcon size={15} /> Last 30 Days ({rangeLabel}) <ChevronRight size={14} style={{ opacity: 0.5 }} />
-            </div>
+            <DateRangePicker
+              start={dateRange.start}
+              end={dateRange.end}
+              onChange={(s, e) => setDateRange({ start: s, end: e })}
+            />
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
               <select
                 value={selectedManager}

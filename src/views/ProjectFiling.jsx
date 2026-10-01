@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Pencil, Calendar, ChevronDown } from 'lucide-react';
+import DateRangePicker from '../components/DateRangePicker';
 import { useToast } from '../components/Toast';
 import HandoverForm from '../components/HandoverForm';
 import { formatINRShort } from '../api/client';
@@ -68,7 +69,7 @@ const ProjectFiling = () => {
   const [quotes, setQuotes] = useState([]); // quotations — used to gate the Order Confirm lead picker
   const [loaded, setLoaded] = useState(false);
 
-  const [rangeKey, setRangeKey] = useState('all');       // default: All Time, so no handover (incl. manager-created) is hidden by a date window
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });  // empty = All Time, so no handover (incl. manager-created) is hidden by a date window
   const [manager, setManager] = useState('all');
 
   const [view, setView] = useState('list');        // 'list' | 'form'
@@ -138,20 +139,25 @@ const ProjectFiling = () => {
   }, [projects]);
 
   // ── Derived: rows after date + manager filters ──
-  const start = rangeStart(RANGE_OPTIONS.find((o) => o.key === rangeKey)?.days);
-  const rangeLabel = (() => {
-    const opt = RANGE_OPTIONS.find((o) => o.key === rangeKey);
-    if (!opt.days) return 'All Time';
-    return `${opt.label} (${fmtDate(start)} - ${fmtDate(new Date())})`;
-  })();
+  // From/To ISO "YYYY-MM-DD" strings from DateRangePicker; empty = no date window.
+  const inDateRange = (v) => {
+    if (!dateRange.start || !dateRange.end) return true;
+    const t = new Date(v).getTime();
+    if (isNaN(t)) return true; // undated records are never hidden
+    const sp = String(dateRange.start).split('-').map(Number);
+    const ep = String(dateRange.end).split('-').map(Number);
+    const s = new Date(sp[0], sp[1] - 1, sp[2], 0, 0, 0, 0);
+    const e = new Date(ep[0], ep[1] - 1, ep[2], 23, 59, 59, 999);
+    return t >= s.getTime() && t <= e.getTime();
+  };
 
   const rows = useMemo(() => {
     return projects.filter((p) => {
-      if (start && p.createdAt && p.createdAt < start) return false;
+      if (!inDateRange(p.createdAt)) return false;
       if (manager !== 'all' && p.salesperson !== manager) return false;
       return true;
     });
-  }, [projects, start, manager]);
+  }, [projects, dateRange, manager]);
 
   // ── Open the full Sales-to-Project Handover form (New Project File) ──
   const openCreate = () => { setEditingRecord(null); setView('form'); };
@@ -203,28 +209,11 @@ const ProjectFiling = () => {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative' }}>
-          <Calendar size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--secondary-color)', pointerEvents: 'none' }} />
-          <select
-            value={rangeKey}
-            onChange={(e) => setRangeKey(e.target.value)}
-            style={{
-              appearance: 'none', WebkitAppearance: 'none',
-              padding: '0.85rem 2.5rem 0.85rem 2.9rem',
-              borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)',
-              backgroundColor: 'var(--surface-color)', color: 'var(--text-main)',
-              fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer', outline: 'none',
-              boxShadow: 'var(--shadow-sm)',
-            }}
-          >
-            {RANGE_OPTIONS.map((o) => {
-              const s = rangeStart(o.days);
-              const text = o.days ? `${o.label} (${fmtDate(s)} - ${fmtDate(new Date())})` : 'All Time';
-              return <option key={o.key} value={o.key}>{text}</option>;
-            })}
-          </select>
-          <ChevronDown size={16} style={{ position: 'absolute', right: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-        </div>
+        <DateRangePicker
+          start={dateRange.start}
+          end={dateRange.end}
+          onChange={(s, e) => setDateRange({ start: s, end: e })}
+        />
 
         <div style={{ position: 'relative' }}>
           <select

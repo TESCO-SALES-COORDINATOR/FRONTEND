@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { CheckCircle, Clock, AlertCircle, XCircle, Plus, Calendar, ChevronDown, X, Eye, Trash2, Pencil, Download, Upload, FileText, Bell, Save } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { formatINRShort } from '../api/client';
+import DateRangePicker from '../components/DateRangePicker';
 
 const PAYMENTS_API = 'https://api-salescoordinator.tescomanagement.com/api/payments';
 const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
@@ -467,7 +468,7 @@ const Payments = () => {
   const [projects, setProjects] = useState([]); // order-confirmations — used to gate the Payment lead picker
   const [loaded, setLoaded] = useState(false);
 
-  const [rangeKey, setRangeKey] = useState('all');
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [manager, setManager] = useState('all');
   // Live managers from the shared users collection (any Sales-Head-created manager included).
   const [fetchedManagers, setFetchedManagers] = useState([]);
@@ -551,19 +552,26 @@ const Payments = () => {
     return Array.from(set);
   }, [leads, form.manager, fetchedManagers]);
 
-  // ── Date range label + start ──
-  const rangeDays = RANGE_OPTIONS.find((o) => o.key === rangeKey)?.days;
-  const start = rangeStart(rangeDays);
+  // ── Date range filter (From/To ISO "YYYY-MM-DD" strings from DateRangePicker) ──
+  const inDateRange = (v) => {
+    if (!dateRange.start || !dateRange.end) return true;
+    const t = new Date(v).getTime();
+    if (isNaN(t)) return true; // undated records are never hidden
+    const sp = String(dateRange.start).split('-').map(Number);
+    const ep = String(dateRange.end).split('-').map(Number);
+    const s = new Date(sp[0], sp[1] - 1, sp[2], 0, 0, 0, 0);
+    const e = new Date(ep[0], ep[1] - 1, ep[2], 23, 59, 59, 999);
+    return t >= s.getTime() && t <= e.getTime();
+  };
 
   // Rows after top filters (date range + manager) — drives the KPI totals
   const scoped = useMemo(() => {
     return payments.filter((p) => {
-      const created = p.createdAt ? new Date(p.createdAt) : null;
-      if (start && created && created < start) return false;
+      if (!inDateRange(p.createdAt)) return false;
       if (manager !== 'all' && p.manager !== manager) return false;
       return true;
     });
-  }, [payments, start, manager]);
+  }, [payments, dateRange, manager]);
 
   // ── KPI totals (live from stored data) ──
   const kpis = useMemo(() => {
@@ -586,7 +594,7 @@ const Payments = () => {
   }, [scoped, statusFilter, dueDateFilter]);
 
   // Reset to first page whenever the filters change the result set
-  useEffect(() => { setPage(1); }, [rangeKey, manager, statusFilter, dueDateFilter]);
+  useEffect(() => { setPage(1); }, [dateRange, manager, statusFilter, dueDateFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);
@@ -994,17 +1002,11 @@ const Payments = () => {
 
       {/* Top filters */}
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative' }}>
-          <Calendar size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--secondary-color)', pointerEvents: 'none' }} />
-          <select value={rangeKey} onChange={(e) => setRangeKey(e.target.value)} style={{ ...selectStyle, paddingLeft: '2.9rem', fontWeight: '600', boxShadow: 'var(--shadow-sm)', borderRadius: 'var(--radius-lg)' }}>
-            {RANGE_OPTIONS.map((o) => {
-              const s = rangeStart(o.days);
-              const text = o.days ? `${o.label} (${fmtDate(s)} - ${fmtDate(new Date())})` : 'All Time';
-              return <option key={o.key} value={o.key}>{text}</option>;
-            })}
-          </select>
-          <ChevronDown size={16} style={{ position: 'absolute', right: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-        </div>
+        <DateRangePicker
+          start={dateRange.start}
+          end={dateRange.end}
+          onChange={(s, e) => setDateRange({ start: s, end: e })}
+        />
         <div style={{ position: 'relative' }}>
           <select value={manager} onChange={(e) => setManager(e.target.value)} style={{ ...selectStyle, fontWeight: '600', boxShadow: 'var(--shadow-sm)', borderRadius: 'var(--radius-lg)' }}>
             <option value="all">All Managers</option>

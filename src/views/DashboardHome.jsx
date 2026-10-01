@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatINRShort } from '../api/client';
+import DateRangePicker from '../components/DateRangePicker';
 
 // --- API endpoints (unchanged backend) ---
 const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
@@ -258,43 +259,11 @@ const DashboardHome = () => {
 
       {/* 2. Filter row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', position: 'relative', zIndex: 50 }}>
-        <div style={{ position: 'relative' }}>
-          <button style={pillBtn} onClick={() => setIsCalendarOpen(o => !o)}>
-            <Calendar size={17} color="var(--primary-color)" />
-            <span>{selectedPreset === 'Custom' ? `${fmtD(dateRange.start)} - ${fmtD(dateRange.end)}` : `${selectedPreset} (${fmtD(dateRange.start)} - ${fmtD(dateRange.end)})`}</span>
-            <ChevronRight size={15} style={{ transform: isCalendarOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', opacity: 0.6 }} />
-          </button>
-
-          {isCalendarOpen && (
-            <div style={{ position: 'absolute', top: '52px', left: 0, backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', display: 'flex', zIndex: 100, overflow: 'hidden', minWidth: '460px' }}>
-              <div style={{ width: '160px', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', backgroundColor: '#F8FAFC', padding: '0.5rem 0' }}>
-                {['Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'This Month', 'Custom'].map(preset => (
-                  <button key={preset} onClick={() => applyPreset(preset)} style={{ padding: '0.6rem 1rem', border: 'none', textAlign: 'left', fontSize: '0.8125rem', fontWeight: selectedPreset === preset ? 600 : 500, color: selectedPreset === preset ? 'var(--primary-color)' : 'var(--text-muted)', backgroundColor: selectedPreset === preset ? '#EEF2FF' : 'transparent', cursor: 'pointer', width: '100%' }}>{preset}</button>
-                ))}
-              </div>
-              <div style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '300px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <button onClick={() => setCurrentNavDate(new Date(currentNavDate.getFullYear(), currentNavDate.getMonth() - 1, 1))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: '4px' }}><ChevronLeft size={16} /></button>
-                  <span style={{ fontSize: '0.875rem', fontWeight: 700 }}>{currentNavDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
-                  <button onClick={() => setCurrentNavDate(new Date(currentNavDate.getFullYear(), currentNavDate.getMonth() + 1, 1))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: '4px' }}><ChevronRight size={16} /></button>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '4px' }}>
-                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <span key={d} style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>{d}</span>)}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-                  {getDaysInMonth(currentNavDate).map((day, idx) => {
-                    if (!day) return <div key={`empty-${idx}`}></div>;
-                    const isSel = isSelected(day); const inRange = isRange(day);
-                    const isToday = day.toDateString() === new Date().toDateString();
-                    return (
-                      <button key={idx} onClick={() => handleDayClick(day)} style={{ padding: '0.35rem 0', fontSize: '0.75rem', fontWeight: isSel || isToday ? 700 : 500, border: 'none', borderRadius: '4px', cursor: 'pointer', backgroundColor: isSel ? 'var(--primary-color)' : inRange ? '#EEF2FF' : 'transparent', color: isSel ? 'white' : inRange ? 'var(--primary-color)' : isToday ? 'var(--primary-color)' : 'var(--text-main)', boxShadow: isToday && !isSel ? 'inset 0 0 0 1px var(--primary-color)' : 'none' }}>{day.getDate()}</button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <DateRangePicker
+          start={dateRange.start}
+          end={dateRange.end}
+          onChange={(s, e) => { setDateRange({ start: s, end: e }); setSelectedPreset('Custom'); }}
+        />
 
         {/* Managers dropdown */}
         <div style={{ position: 'relative' }}>
