@@ -151,7 +151,7 @@ const DashboardHome = () => {
   const coldLeads = countBy('cold');
   const junkLeads = countBy('junk');
   const lostLeads = countBy('lost');
-  const overdueFollowups = leads.filter((l) => { if (l.followUpDone) return false; if (String(l.status||'').toLowerCase().includes('junk')) return false; const t = new Date(l.followUp).getTime(); return !isNaN(t) && t < Date.now(); }).length;
+  const overdueFollowups = leads.filter((l) => { if (l.followUpDone) return false; if (String(l.status||'').toLowerCase().includes('junk')) return false; const raw = String(l.followUp || '').trim(); if (!raw || /^(no date|pending)$/i.test(raw)) return true; const t = new Date(l.followUp).getTime(); return !isNaN(t) && t < Date.now(); }).length;
   // Match both "Appointment Fixed" and short "Appt Fixed" status labels
   // Appt. Fixed reflects the real scheduled appointments (matches the Appointments page + Lead Management)
   const apptFixed = appointments.filter(a => !/visit/i.test(a.type || '')).length;

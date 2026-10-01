@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AddLeadWizard from '../components/AddLeadWizard';
+import DateRangePicker from '../components/DateRangePicker';
 import { Search, Filter, Phone, MoreVertical, X, Edit2, Mail, Trash2, Users, Flame, CalendarCheck, Clock, Calendar, ChevronDown, ChevronUp, MapPin, Activity, User, FileText, UserPlus, Sparkles, Thermometer, Snowflake, FileSignature, HandshakeIcon, CheckCircle2, XCircle, Trash, Send, ArrowUpDown, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { statusColor, sourceColor } from '../theme/statusColors';
@@ -484,7 +485,7 @@ const LeadManagement = () => {
     if (!lead) return 'none';
     if (lead.followUpDone) return 'completed';
     const ms = followUpMillis(lead.followUp);
-    if (ms == null) return 'none';
+    if (ms == null) return 'overdue'; // no scheduled follow-up date → treat as Overdue
     return ms < nowTick ? 'overdue' : 'upcoming';
   };
 
@@ -1506,18 +1507,11 @@ const LeadManagement = () => {
       {/* Filter row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', position: 'relative', zIndex: 40 }}>
         <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'var(--surface-color)', padding: '0.7rem 1.15rem', borderRadius: '0.65rem', border: '1px solid var(--border-color)', boxShadow: '0 1px 2px rgba(0,0,0,0.04)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-main)', outline: 'none', whiteSpace: 'nowrap' }}
-          >
-            <Calendar size={16} color="var(--primary-color)" />
-            <span>
-              {selectedPreset === 'Custom'
-                ? `${formatDateDisplay(dateRange.start)} - ${formatDateDisplay(dateRange.end)}`
-                : `${selectedPreset}${dateRange.start ? ` (${formatDateDisplay(dateRange.start)} - ${formatDateDisplay(dateRange.end)})` : ''}`}
-            </span>
-            <ChevronRight size={14} style={{ transform: isCalendarOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', opacity: 0.7 }} />
-          </button>
+          <DateRangePicker
+            start={dateRange.start}
+            end={dateRange.end}
+            onChange={(s, e) => { setDateRange({ start: s, end: e }); setSelectedPreset('Custom'); }}
+          />
 
           {isCalendarOpen && (
             <div style={{ position: 'absolute', top: '52px', left: 0, backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', display: 'flex', zIndex: 100, overflow: 'hidden', minWidth: '460px' }}>
