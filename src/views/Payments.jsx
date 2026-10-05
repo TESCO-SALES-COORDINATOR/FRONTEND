@@ -510,10 +510,15 @@ const Payments = () => {
   }, []);
 
   useEffect(() => {
-    fetch(LEADS_API)
+    // Poll leads (not a one-time fetch) so a cold-start/transient failure recovers and the
+    // Lead dropdown is never left empty. Keep the current list if a refresh comes back empty.
+    const loadLeads = () => fetch(LEADS_API)
       .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setLeads(d); })
+      .then((d) => { if (Array.isArray(d) && d.length) setLeads(d); })
       .catch((e) => console.error('Failed to load leads:', e));
+    loadLeads();
+    const iv = setInterval(loadLeads, 15000);
+    return () => clearInterval(iv);
   }, []);
 
   // Load order-confirmations (projects) so Payment only offers leads whose order is

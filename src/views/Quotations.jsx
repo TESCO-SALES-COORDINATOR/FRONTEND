@@ -88,10 +88,13 @@ const Quotations = () => {
 
   // Load all leads so the Generate Quotation form can offer a Lead ID dropdown
   useEffect(() => {
-    fetch('https://api-salescoordinator.tescomanagement.com/api/leads')
+    const loadLeads = () => fetch('https://api-salescoordinator.tescomanagement.com/api/leads')
       .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setLeads(d); })
+      .then((d) => { if (Array.isArray(d) && d.length) setLeads(d); })
       .catch((e) => console.error('Failed to load leads:', e));
+    loadLeads();
+    const iv = setInterval(loadLeads, 15000);
+    return () => clearInterval(iv);
   }, []);
 
   // Load appointments/visits so we can offer only leads whose VISIT is completed

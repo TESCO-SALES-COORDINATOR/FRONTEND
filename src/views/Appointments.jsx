@@ -96,10 +96,13 @@ const Appointments = () => {
 
   // Load leads so an appointment can be linked to a lead (and logged on its history)
   useEffect(() => {
-    fetch('https://api-salescoordinator.tescomanagement.com/api/leads')
+    const loadLeads = () => fetch('https://api-salescoordinator.tescomanagement.com/api/leads')
       .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setLeads(d); })
+      .then((d) => { if (Array.isArray(d) && d.length) setLeads(d); })
       .catch((e) => console.error('Failed to load leads:', e));
+    loadLeads();
+    const iv = setInterval(loadLeads, 15000);
+    return () => clearInterval(iv);
   }, []);
 
   // Append an entry to a lead's shared history (visible to manager + coordinator)
