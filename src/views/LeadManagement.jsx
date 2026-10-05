@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AddLeadWizard from '../components/AddLeadWizard';
 import DateRangePicker from '../components/DateRangePicker';
-import { Search, Filter, Phone, MoreVertical, X, Edit2, Mail, Trash2, Users, Flame, CalendarCheck, Clock, Calendar, ChevronDown, ChevronUp, MapPin, Activity, User, FileText, UserPlus, Sparkles, Thermometer, Snowflake, FileSignature, HandshakeIcon, CheckCircle2, XCircle, Trash, Send, ArrowUpDown, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Search, Filter, Phone, MoreVertical, X, Edit2, Mail, Trash2, Users, Flame, CalendarCheck, Clock, Calendar, ChevronDown, ChevronUp, MapPin, Activity, User, FileText, UserPlus, Sparkles, Thermometer, Snowflake, FileSignature, HandshakeIcon, CheckCircle2, XCircle, Trash, Send, ArrowUpDown, ChevronLeft, ChevronRight, Download, UserX } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { statusColor, sourceColor } from '../theme/statusColors';
 import { formatBytes } from '../utils/cloudinary';
@@ -966,6 +966,7 @@ const LeadManagement = () => {
   };
   const overviewLeads = leads.filter(l => byMgr(l.manager) && inDateRange(l.date || l.createdAt));
   const mgrLeadIds = new Set(overviewLeads.map(l => l.id));
+  const unassignedCount = overviewLeads.filter(l => !l.manager || String(l.manager).trim().toLowerCase() === 'unassigned').length;
   const apptFixedCount = apptRecords.filter(a => !/visit/i.test(a.type || '') && byMgr(a.manager) && inDateRange(a.date || a.createdAt)).length;
   const quotationCount = quoteRecords.filter(q => (selMgr === 'All' || mgrLeadIds.has(q.leadId)) && inDateRange(q.date || q.createdAt)).length;
   const orderConfirmedCount = projectRecords.filter(p => (selMgr === 'All' || mgrLeadIds.has(p.leadId) || (p.salesperson || '') === selMgr || (p.manager || '') === selMgr) && inDateRange(p.date || p.createdAt)).length;
@@ -1015,6 +1016,8 @@ const LeadManagement = () => {
         matchesStatus = statusLower.includes('junk');
       } else if (statusFilter === 'Lost') {
         matchesStatus = statusLower.includes('lost');
+      } else if (statusFilter === 'Unassigned') {
+        matchesStatus = !l.manager || String(l.manager).trim().toLowerCase() === 'unassigned';
       } else if (statusFilter === 'Overdue') {
         // Overdue is derived from the follow-up date/time, not the lead status.
         matchesStatus = getFollowUpState(l) === 'overdue';
@@ -1570,6 +1573,17 @@ const LeadManagement = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
           {/* Row 1 */}
           <LeadOverviewCard
+            title="Unassigned Leads"
+            value={unassignedCount}
+            subtitle="Not yet assigned"
+            icon={UserX}
+            color="#D97706"
+            bg="#FFFBEB"
+            borderColor="#FDE68A"
+            isSelected={statusFilter === 'Unassigned'}
+            onClick={() => toggleFilter('Unassigned')}
+          />
+          <LeadOverviewCard
             title="Total Leads"
             value={overviewLeads.length}
             subtitle="All leads in system"
@@ -1691,7 +1705,8 @@ const LeadManagement = () => {
           <table style={{ width: '100%', minWidth: '1100px', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead style={{ backgroundColor: '#F1F5F9', borderBottom: '1px solid var(--border-color)' }}>
               <tr>
-                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Date</th>
+                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>S.No.</th>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Date</th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Lead ID</th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Customer Name</th>
                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>Work Type</th>
@@ -1842,6 +1857,7 @@ const LeadManagement = () => {
                   cursor: 'pointer'
                 }}
               >
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{index + 1}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.date}</td>
                 <td
                   style={{

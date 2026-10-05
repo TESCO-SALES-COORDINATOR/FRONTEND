@@ -70,7 +70,7 @@ const DashboardHome = () => {
 
   useEffect(() => {
     const loadAll = () => {
-      fetch(LEADS_API).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllLeads(d); }).catch(e => console.error('Dashboard failed to load leads:', e));
+      fetch(LEADS_API + '?light=1').then(r => r.json()).then(d => { if (Array.isArray(d)) setAllLeads(d); }).catch(e => console.error('Dashboard failed to load leads:', e));
       fetch(APPTS_API).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllAppointments(d.map(a => ({ ...a, id: a._id || a.id }))); }).catch(e => console.error('Dashboard failed to load appointments:', e));
       fetch(QUOTES_API).then(r => r.json()).then(d => { if (Array.isArray(d)) setLiveQuotes(d); }).catch(e => console.error('Failed to load quotations:', e));
       fetch(PROJECTS_API).then(r => r.json()).then(d => { if (Array.isArray(d)) setLiveProjects(d); }).catch(e => console.error('Failed to load projects:', e));
