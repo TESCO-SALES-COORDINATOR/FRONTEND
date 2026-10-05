@@ -623,6 +623,9 @@ const LeadManagement = () => {
     document.head.appendChild(s);
   });
 
+  // Pre-load the PDF library on mount so the first download is instant (no CDN wait on click).
+  useEffect(() => { ensureHtml2Pdf().catch(() => {}); }, []);
+
   // Build the branded Tesco Structures lead document as { quoteNo, style, inner }.
   // Uses a normal (non-fixed) flow layout so it renders cleanly both as a PDF and in print.
   const leadDocParts = (lead) => {
@@ -824,35 +827,36 @@ const LeadManagement = () => {
   // Download a single lead as a real branded PDF file (falls back to print-to-PDF)
   const downloadLead = async (lead) => {
     const { quoteNo, style, inner } = leadDocParts(lead);
+    let host = null;
+    const prevX = window.scrollX || 0, prevY = window.scrollY || 0;
     try {
       const html2pdf = await ensureHtml2Pdf();
-      // Render into an on-screen host (height:0 + overflow hidden → invisible but fully laid
-      // out) and capture the .tsdoc element itself. A far off-screen container can render blank.
-      const host = document.createElement('div');
-      // On-screen (top-left, briefly) at exactly A4 content width so html2canvas captures it
-      // full and html2pdf fits it to the A4 page — no clipping, no oversized page.
-      host.style.cssText = 'position:absolute;left:0;top:0;width:794px;background:#fff;';
+      window.scrollTo(0, 0);
+      // Render BEHIND the page (z-index:-1, hidden by the app background — never opened in a
+      // tab or print preview) at A4 width; pin html2canvas to the scroll origin so the capture
+      // is never offset/blank.
+      host = document.createElement('div');
+      host.style.cssText = 'position:absolute;left:0;top:0;width:794px;background:#fff;z-index:-1;';
       host.innerHTML = style + inner;
       document.body.appendChild(host);
       const target = host.querySelector('.tsdoc') || host;
       if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch {} }
-      await new Promise((r) => setTimeout(r, 80));
+      await new Promise((r) => setTimeout(r, 50));
       await html2pdf().set({
         margin: 0,
         filename: `${quoteNo}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, x: 0, y: 0, windowWidth: 794, windowHeight: target.scrollHeight },
         jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'] },
       }).from(target).save();
-      document.body.removeChild(host);
       addToast('Lead PDF downloaded', 'success');
     } catch (err) {
-      console.error('PDF download failed, falling back to print:', err);
-      const win = window.open('', '_blank');
-      if (!win) { addToast('Please allow pop-ups to download the lead.', 'warning'); return; }
-      win.document.write(buildLeadDocHtml(lead));
-      win.document.close();
+      console.error('PDF download failed:', err);
+      addToast('Could not generate the PDF. Please try again.', 'error');
+    } finally {
+      if (host && host.parentNode) host.parentNode.removeChild(host);
+      window.scrollTo(prevX, prevY);
     }
   };
 

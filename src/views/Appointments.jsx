@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Filter, User, Phone, MapPin, ChevronLeft, ChevronRight, CalendarCheck2, CalendarClock, CheckCircle2, Flag, X, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import DateRangePicker from '../components/DateRangePicker';
+import LeadPicker from '../components/LeadPicker';
 
 const APPT_API = 'https://api-salescoordinator.tescomanagement.com/api/appointments';
 
@@ -732,25 +733,23 @@ const Appointments = () => {
                 <div key={key}>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.4rem' }}>{label}</label>
                   {type === 'leadselect' ? (
-                    <select value={newVisit.leadId} onChange={e => {
-                      const lead = leads.find(l => l.id === e.target.value);
-                      // Auto-fill the manager from the lead's existing assignment. If the lead has
-                      // no manager (Unassigned), leave it blank so the coordinator picks one manually.
-                      const assignedMgr = (lead?.manager && String(lead.manager).trim() && String(lead.manager).trim().toLowerCase() !== 'unassigned') ? String(lead.manager).trim() : '';
-                      setNewVisit({
-                        ...newVisit,
-                        leadId: e.target.value,
-                        phone: lead?.phone || newVisit.phone,
-                        manager: assignedMgr,
-                        status: assignedMgr ? 'Assigned' : 'Waiting',
-                      });
-                    }}
-                      required={required}
-                      style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem', backgroundColor: 'var(--surface-color)' }}>
-                      <option value="">Select lead</option>
-                      {eligibleLeads.map(l => <option key={l.id} value={l.id}>{l.id}{l.name ? ` — ${l.name}` : ''}</option>)}
-                      {eligibleLeads.length === 0 && <option value="" disabled>No leads available</option>}
-                    </select>
+                    <LeadPicker
+                      placeholder="Select lead"
+                      initialLabel={newVisit.leadId}
+                      fetchPage={({ q, offset, limit }) =>
+                        fetch(`https://api-salescoordinator.tescomanagement.com/api/leads?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`)
+                          .then(r => r.json()).then(d => (Array.isArray(d) ? d : []))}
+                      onSelect={(lead) => {
+                        const assignedMgr = (lead?.manager && String(lead.manager).trim() && String(lead.manager).trim().toLowerCase() !== 'unassigned') ? String(lead.manager).trim() : '';
+                        setNewVisit({
+                          ...newVisit,
+                          leadId: lead ? lead.id : '',
+                          phone: lead?.phone || newVisit.phone,
+                          manager: assignedMgr,
+                          status: assignedMgr ? 'Assigned' : 'Waiting',
+                        });
+                      }}
+                    />
                   ) : type === 'select' ? (
                     <select value={newVisit[key]} onChange={e => {
                       const val = e.target.value;

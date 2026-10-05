@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Download, Eye, Plus, CheckCircle, Clock, X, ThumbsUp, Send, Upload, Trash2 } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import LeadPicker from '../components/LeadPicker';
 
 // Newest-first: order records by creation time, then by id (numeric-aware) as a tie-breaker.
 const byNewest = (a, b) => {
@@ -615,20 +616,14 @@ const Quotations = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Lead ID</label>
-                  <select
-                    required
-                    value={newQuote.leadId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      const lead = leads.find(l => l.id === val);
-                      setNewQuote({ ...newQuote, leadId: val, client: lead ? (lead.name || newQuote.client) : newQuote.client });
-                    }}
-                    style={{ width: '100%', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.9rem', backgroundColor: 'var(--surface-color)' }}
-                  >
-                    <option value="">Select lead</option>
-                    {eligibleLeads.map(l => (<option key={l.id} value={l.id}>{l.name ? `${l.id} — ${l.name}` : l.id}</option>))}
-                    {eligibleLeads.length === 0 && <option value="" disabled>No leads available for a quotation</option>}
-                  </select>
+                  <LeadPicker
+                    placeholder="Select lead"
+                    initialLabel={newQuote.leadId}
+                    fetchPage={({ q, offset, limit }) =>
+                      fetch(`https://api-salescoordinator.tescomanagement.com/api/leads?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`)
+                        .then(r => r.json()).then(d => (Array.isArray(d) ? d : []))}
+                    onSelect={(lead) => setNewQuote({ ...newQuote, leadId: lead ? lead.id : '', client: lead ? (lead.name || newQuote.client) : newQuote.client })}
+                  />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Client Name</label>

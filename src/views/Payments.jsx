@@ -3,6 +3,7 @@ import { CheckCircle, Clock, AlertCircle, XCircle, Plus, Calendar, ChevronDown, 
 import { useToast } from '../components/Toast';
 import { formatINRShort } from '../api/client';
 import DateRangePicker from '../components/DateRangePicker';
+import LeadPicker from '../components/LeadPicker';
 
 const PAYMENTS_API = 'https://api-salescoordinator.tescomanagement.com/api/payments';
 const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
@@ -634,11 +635,10 @@ const Payments = () => {
   };
 
   // Selecting a Lead ID from the dropdown autofills the invoice from that lead
-  const onLeadSelect = (val) => {
-    const lead = leads.find((l) => l.id === val);
+  const onLeadSelect = (lead) => {
     setForm((prev) => ({
       ...prev,
-      leadId: val,
+      leadId: lead ? lead.id : '',
       customer: lead?.name || prev.customer,
       manager: lead?.manager || prev.manager,
       orderValue: lead?.budget ? parseAmount(lead.budget) : prev.orderValue,
@@ -1187,16 +1187,14 @@ const Payments = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.1rem' }}>
                 <div>
                   <label style={labelStyle}>Lead ID</label>
-                  <div style={{ position: 'relative' }}>
-                    <select required value={form.leadId} onChange={(e) => onLeadSelect(e.target.value)} style={{ ...selectStyle, width: '100%', fontWeight: '500' }}>
-                      <option value="">Select Lead ID</option>
-                      {eligibleLeads.map((l) => (
-                        <option key={l.id} value={l.id}>{l.name ? `${l.id} — ${l.name}` : l.id}</option>
-                      ))}
-                      {eligibleLeads.length === 0 && <option value="" disabled>No leads available for payment</option>}
-                    </select>
-                    <ChevronDown size={16} style={{ position: 'absolute', right: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                  </div>
+                  <LeadPicker
+                    placeholder="Select Lead ID"
+                    initialLabel={form.leadId}
+                    fetchPage={({ q, offset, limit }) =>
+                      fetch(`${LEADS_API}?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`)
+                        .then((r) => r.json()).then((d) => (Array.isArray(d) ? d : []))}
+                    onSelect={(lead) => onLeadSelect(lead)}
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>Invoice ID</label>
