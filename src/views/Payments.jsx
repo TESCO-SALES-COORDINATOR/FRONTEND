@@ -533,7 +533,7 @@ const Payments = () => {
   const isOrderConfirmed = (p) => /confirm/i.test(String(p.status || ''));
   const leadHasOrderConfirmed = (leadId) => projects.some((p) => (p.leadId || p.id) === leadId && isOrderConfirmed(p));
   const leadHasPayment = (leadId) => payments.some((p) => p.leadId === leadId);
-  const eligibleLeads = leads.filter((l) => !leadHasPayment(l.id));
+  const eligibleLeads = leads.filter((l) => l && l.id);
 
   // ── Managers for the filter (derived from data) ──
   const managers = useMemo(() => {
@@ -645,10 +645,6 @@ const Payments = () => {
     e.preventDefault();
     if (!form.id || !form.customer) return;
     // ── Enforce the strict lifecycle before recording a payment ──
-    if (leadHasPayment(form.leadId)) {
-      addToast('This lead already has a payment record. Only one payment collection is allowed per lead.', 'error');
-      return;
-    }
     setSaving(true);
     const payload = {
       id: form.id.trim(),

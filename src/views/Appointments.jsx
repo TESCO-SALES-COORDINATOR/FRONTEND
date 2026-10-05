@@ -186,12 +186,9 @@ const Appointments = () => {
   const leadHasVisit                = (x) => { const l = asLead(x); return appointments.some(a => isVisitType(a) && apptMatchesLead(a, l)); };
   // Leads that may be picked for the record type currently chosen in the create modal.
   // Always keep the currently-selected lead visible so an in-progress choice never vanishes.
-  const eligibleLeads = leads.filter(l => {
-    if (l.id === newVisit.leadId) return true;
-    if (newVisit.type === 'Visits') return leadHasCompletedAppointment(l) && !leadHasVisit(l);
-    // Appointment: only leads that have NOT already been scheduled for an appointment or visit.
-    return !leadHasAppointment(l) && !leadHasVisit(l);
-  });
+  // Dropdown shows ALL leads the coordinator can see — appointment & visit are independent
+  // actions, so a lead is never hidden because it already had one.
+  const eligibleLeads = leads.filter(l => l && l.id);
 
   /* ── From/To date filter (ISO "YYYY-MM-DD"); empty = all appointments shown ── */
   const inDateRange = (v) => {
@@ -325,20 +322,6 @@ const Appointments = () => {
 
   const handleAddSubmit = (e) => {
     e.preventDefault();
-    // ── Enforce the strict lifecycle before creating the record ──
-    if (newVisit.type === 'Visits') {
-      if (!leadHasCompletedAppointment(newVisit.leadId)) {
-        addToast('This lead has no completed appointment yet — complete the appointment first.', 'error');
-        return;
-      }
-      if (leadHasVisit(newVisit.leadId)) {
-        addToast('This lead already has a visit. Only one visit is allowed per lead.', 'error');
-        return;
-      }
-    } else if (leadHasAppointment(newVisit.leadId)) {
-      addToast('This lead already has an appointment. Only one appointment is allowed per lead.', 'error');
-      return;
-    }
     // Store times in 12-hour AM/PM format. Status is derived from the manager assignment:
     // no manager -> Waiting, manager chosen -> Assigned.
     const payload = {
@@ -763,7 +746,7 @@ const Appointments = () => {
                       style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.875rem', backgroundColor: 'var(--surface-color)' }}>
                       <option value="">Select lead</option>
                       {eligibleLeads.map(l => <option key={l.id} value={l.id}>{l.id}{l.name ? ` — ${l.name}` : ''}</option>)}
-                      {eligibleLeads.length === 0 && <option value="" disabled>{newVisit.type === 'Visits' ? 'No leads with a completed appointment yet' : 'All leads already have an appointment'}</option>}
+                      {eligibleLeads.length === 0 && <option value="" disabled>No leads available</option>}
                     </select>
                   ) : type === 'select' ? (
                     <select value={newVisit[key]} onChange={e => {
