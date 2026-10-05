@@ -980,6 +980,13 @@ const LeadManagement = () => {
   };
 
   const leadsInDateRange = leads.filter(l => inDateRange(l.date || l.createdAt));
+  const snoMap = (() => {
+    const tm = (l) => { const ms = new Date(l.createdAt || l.date || 0).getTime(); return isNaN(ms) ? 0 : ms; };
+    const m = {};
+    [...leads].sort((a, b) => (tm(a) - tm(b)) || String(a.id || '').localeCompare(String(b.id || ''), undefined, { numeric: true })).forEach((l, i) => { m[l.id] = i + 1; });
+    return m;
+  })();
+
 
   const filteredLeads = leadsInDateRange.filter(l => {
     if (searchQuery.trim() !== '') {
@@ -1573,17 +1580,6 @@ const LeadManagement = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
           {/* Row 1 */}
           <LeadOverviewCard
-            title="Unassigned Leads"
-            value={unassignedCount}
-            subtitle="Not yet assigned"
-            icon={UserX}
-            color="#D97706"
-            bg="#FFFBEB"
-            borderColor="#FDE68A"
-            isSelected={statusFilter === 'Unassigned'}
-            onClick={() => toggleFilter('Unassigned')}
-          />
-          <LeadOverviewCard
             title="Total Leads"
             value={overviewLeads.length}
             subtitle="All leads in system"
@@ -1593,6 +1589,17 @@ const LeadManagement = () => {
             borderColor="#C7D2FE"
             isSelected={statusFilter === 'All'}
             onClick={() => toggleFilter('All')}
+          />
+          <LeadOverviewCard
+            title="Unassigned Leads"
+            value={unassignedCount}
+            subtitle="Not yet assigned"
+            icon={UserX}
+            color="#D97706"
+            bg="#FFFBEB"
+            borderColor="#FDE68A"
+            isSelected={statusFilter === 'Unassigned'}
+            onClick={() => toggleFilter('Unassigned')}
           />
           <LeadOverviewCard
             title="New Leads"
@@ -1857,7 +1864,7 @@ const LeadManagement = () => {
                   cursor: 'pointer'
                 }}
               >
-                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{index + 1}</td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{snoMap[lead.id] || ''}</td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap' }}>{lead.date}</td>
                 <td
                   style={{

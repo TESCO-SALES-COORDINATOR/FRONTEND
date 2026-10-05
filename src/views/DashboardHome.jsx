@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Users, Sparkles, Flame, Thermometer, Snowflake, CalendarCheck, FileText,
+  Users, Sparkles, Flame, Thermometer, Snowflake, CalendarCheck, FileText, UserX,
   CheckCircle2, Trash2, XCircle, Calendar, CalendarClock, Flag, Clock, Send,
   ThumbsUp, AlertCircle, ChevronRight, ChevronLeft, ChevronDown
 } from 'lucide-react';
@@ -146,6 +146,7 @@ const DashboardHome = () => {
   const isNewStatus = (s) => has(s, 'new') || has(s, 'received');
 
   const totalLeads = leads.length;
+  const unassignedLeads = leads.filter(l => !l.manager || String(l.manager).trim().toLowerCase() === 'unassigned').length;
   const newLeads = leads.filter(l => isNewStatus(l.status)).length;
   const hotLeads = countBy('hot');
   const warmLeads = countBy('warm');
@@ -284,6 +285,7 @@ const DashboardHome = () => {
         <SectionTitle>Leads Overview</SectionTitle>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.25rem' }}>
           <StatCard title="Total Leads" value={totalLeads} subtitle="All leads in system" icon={Users} tint="neutral" />
+          <StatCard title="Unassigned Leads" value={unassignedLeads} subtitle="Not yet assigned" icon={UserX} tint="amber" />
           <StatCard title="New Leads" value={newLeads} subtitle="Freshly received" icon={Sparkles} tint="blue" />
           <StatCard title="Hot Leads" value={hotLeads} subtitle="High conversion chance" icon={Flame} tint="red" />
           <StatCard title="Warm Leads" value={warmLeads} subtitle="Nurturing in progress" icon={Thermometer} tint="amber" />
