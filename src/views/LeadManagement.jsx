@@ -257,6 +257,10 @@ const LeadManagement = () => {
     let end = new Date();
 
     switch (presetName) {
+      case 'All Time':
+        start = new Date(2000, 0, 1);
+        end = new Date(2100, 11, 31);
+        break;
       case 'Today':
         start = today;
         end = today;
@@ -1526,7 +1530,7 @@ const LeadManagement = () => {
           {isCalendarOpen && (
             <div style={{ position: 'absolute', top: '52px', left: 0, backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', display: 'flex', zIndex: 100, overflow: 'hidden', minWidth: '460px' }}>
               <div style={{ width: '160px', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', backgroundColor: '#F8FAFC', padding: '0.5rem 0' }}>
-                {['Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'This Month', 'Custom'].map(preset => (
+                {['All Time', 'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'This Month', 'Custom'].map(preset => (
                   <button key={preset} type="button" onClick={() => applyPreset(preset)} style={{ padding: '0.6rem 1rem', border: 'none', textAlign: 'left', fontSize: '0.8125rem', fontWeight: selectedPreset === preset ? '600' : '500', color: selectedPreset === preset ? 'var(--primary-color)' : 'var(--text-muted)', backgroundColor: selectedPreset === preset ? '#EEF2FF' : 'transparent', cursor: 'pointer', width: '100%' }}>{preset}</button>
                 ))}
               </div>
