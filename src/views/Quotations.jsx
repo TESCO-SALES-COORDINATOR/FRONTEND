@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Download, Eye, Plus, CheckCircle, Clock, X, ThumbsUp, Send, Upload, Trash2 } from 'lucide-react';
 import { useToast } from '../components/Toast';
-import LeadPicker from '../components/LeadPicker';
+import LeadIdInput from '../components/LeadIdInput';
+import { validateLeadAccess } from '../api/client';
 
 // Newest-first: order records by creation time, then by id (numeric-aware) as a tie-breaker.
 const byNewest = (a, b) => {
@@ -616,13 +617,12 @@ const Quotations = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Lead ID</label>
-                  <LeadPicker
-                    placeholder="Select lead"
-                    initialLabel={newQuote.leadId}
-                    fetchPage={({ q, offset, limit }) =>
-                      fetch(`https://api-salescoordinator.tescomanagement.com/api/leads?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`)
-                        .then(r => r.json()).then(d => (Array.isArray(d) ? d : []))}
-                    onSelect={(lead) => setNewQuote({ ...newQuote, leadId: lead ? lead.id : '', client: lead ? (lead.name || newQuote.client) : newQuote.client })}
+                  <LeadIdInput
+                    placeholder="e.g. LD-0001"
+                    value={newQuote.leadId}
+                    validate={validateLeadAccess}
+                    onChange={(id) => setNewQuote({ ...newQuote, leadId: id })}
+                    onResolved={(lead) => { if (lead) setNewQuote({ ...newQuote, leadId: lead.id, client: lead.name || newQuote.client }); }}
                   />
                 </div>
                 <div>

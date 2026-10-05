@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { CheckCircle, Clock, AlertCircle, XCircle, Plus, Calendar, ChevronDown, X, Eye, Trash2, Pencil, Download, Upload, FileText, Bell, Save } from 'lucide-react';
 import { useToast } from '../components/Toast';
-import { formatINRShort } from '../api/client';
+import { formatINRShort, validateLeadAccess } from '../api/client';
 import DateRangePicker from '../components/DateRangePicker';
-import LeadPicker from '../components/LeadPicker';
+import LeadIdInput from '../components/LeadIdInput';
 
 const PAYMENTS_API = 'https://api-salescoordinator.tescomanagement.com/api/payments';
 const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
@@ -1187,13 +1187,12 @@ const Payments = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.1rem' }}>
                 <div>
                   <label style={labelStyle}>Lead ID</label>
-                  <LeadPicker
-                    placeholder="Select Lead ID"
-                    initialLabel={form.leadId}
-                    fetchPage={({ q, offset, limit }) =>
-                      fetch(`${LEADS_API}?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`)
-                        .then((r) => r.json()).then((d) => (Array.isArray(d) ? d : []))}
-                    onSelect={(lead) => onLeadSelect(lead)}
+                  <LeadIdInput
+                    placeholder="e.g. LD-0001"
+                    value={form.leadId}
+                    validate={validateLeadAccess}
+                    onChange={(id) => setForm((prev) => ({ ...prev, leadId: id }))}
+                    onResolved={(lead) => { if (lead) onLeadSelect(lead); }}
                   />
                 </div>
                 <div>

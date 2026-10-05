@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Search, Filter, User, Phone, MapPin, ChevronLeft, ChevronRight, CalendarCheck2, CalendarClock, CheckCircle2, Flag, X, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import DateRangePicker from '../components/DateRangePicker';
-import LeadPicker from '../components/LeadPicker';
+import LeadIdInput from '../components/LeadIdInput';
+import { validateLeadAccess } from '../api/client';
 
 const APPT_API = 'https://api-salescoordinator.tescomanagement.com/api/appointments';
 
@@ -733,17 +734,17 @@ const Appointments = () => {
                 <div key={key}>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.4rem' }}>{label}</label>
                   {type === 'leadselect' ? (
-                    <LeadPicker
-                      placeholder="Select lead"
-                      initialLabel={newVisit.leadId}
-                      fetchPage={({ q, offset, limit }) =>
-                        fetch(`https://api-salescoordinator.tescomanagement.com/api/leads?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`)
-                          .then(r => r.json()).then(d => (Array.isArray(d) ? d : []))}
-                      onSelect={(lead) => {
+                    <LeadIdInput
+                      placeholder="e.g. LD-0001"
+                      value={newVisit.leadId}
+                      validate={validateLeadAccess}
+                      onChange={(id) => setNewVisit({ ...newVisit, leadId: id })}
+                      onResolved={(lead) => {
+                        if (!lead) return;
                         const assignedMgr = (lead?.manager && String(lead.manager).trim() && String(lead.manager).trim().toLowerCase() !== 'unassigned') ? String(lead.manager).trim() : '';
                         setNewVisit({
                           ...newVisit,
-                          leadId: lead ? lead.id : '',
+                          leadId: lead.id,
                           phone: lead?.phone || newVisit.phone,
                           manager: assignedMgr,
                           status: assignedMgr ? 'Assigned' : 'Waiting',

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Plus, X, FileText, Calendar, Settings } from 'lucide-react';
 import { useToast } from './Toast';
-import LeadPicker from './LeadPicker';
+import LeadIdInput from './LeadIdInput';
+import { validateLeadAccess } from '../api/client';
 
 const PROJECTS_API = 'https://api-salescoordinator.tescomanagement.com/api/projects';
 const LEADS_API = 'https://api-salescoordinator.tescomanagement.com/api/leads';
@@ -235,15 +236,14 @@ const HandoverForm = ({ record, leads = [], isDuplicateLead, onCancel, onSaved }
         <SectionHeader icon={FileText} title="1. Client & Project Details" />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1.5rem' }}>
           <Field label="Lead ID" required>
-            <LeadPicker
-              placeholder="Select Lead ID"
+            <LeadIdInput
+              placeholder="e.g. LD-0001"
               disabled={isEdit}
-              initialLabel={form.leadId}
+              value={form.leadId}
               inputStyle={inputStyle}
-              fetchPage={({ q, offset, limit }) =>
-                fetch(`${LEADS_API}?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`)
-                  .then((r) => r.json()).then((d) => (Array.isArray(d) ? d : []))}
-              onSelect={(lead) => onLeadIdChange(lead)}
+              validate={validateLeadAccess}
+              onChange={(id) => setForm((prev) => ({ ...prev, leadId: id }))}
+              onResolved={(lead) => { if (lead) onLeadIdChange(lead); }}
             />
           </Field>
           <Field label="Client Name" required><input style={inputStyle} required placeholder="e.g. Sree Brindaavan Kindergarten" value={form.clientName} onChange={(e) => set('clientName', e.target.value)} /></Field>
