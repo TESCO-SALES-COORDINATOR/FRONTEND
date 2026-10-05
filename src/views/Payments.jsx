@@ -533,7 +533,7 @@ const Payments = () => {
   const isOrderConfirmed = (p) => /confirm/i.test(String(p.status || ''));
   const leadHasOrderConfirmed = (leadId) => projects.some((p) => (p.leadId || p.id) === leadId && isOrderConfirmed(p));
   const leadHasPayment = (leadId) => payments.some((p) => p.leadId === leadId);
-  const eligibleLeads = leads.filter((l) => leadHasOrderConfirmed(l.id) && !leadHasPayment(l.id));
+  const eligibleLeads = leads.filter((l) => !leadHasPayment(l.id));
 
   // ── Managers for the filter (derived from data) ──
   const managers = useMemo(() => {
@@ -645,10 +645,6 @@ const Payments = () => {
     e.preventDefault();
     if (!form.id || !form.customer) return;
     // ── Enforce the strict lifecycle before recording a payment ──
-    if (!leadHasOrderConfirmed(form.leadId)) {
-      addToast('This lead has no confirmed order yet — confirm the order first.', 'error');
-      return;
-    }
     if (leadHasPayment(form.leadId)) {
       addToast('This lead already has a payment record. Only one payment collection is allowed per lead.', 'error');
       return;
@@ -1196,7 +1192,7 @@ const Payments = () => {
                       {eligibleLeads.map((l) => (
                         <option key={l.id} value={l.id}>{l.name ? `${l.id} — ${l.name}` : l.id}</option>
                       ))}
-                      {eligibleLeads.length === 0 && <option value="" disabled>No order-confirmed leads awaiting payment</option>}
+                      {eligibleLeads.length === 0 && <option value="" disabled>No leads available for payment</option>}
                     </select>
                     <ChevronDown size={16} style={{ position: 'absolute', right: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                   </div>
