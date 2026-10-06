@@ -1283,9 +1283,13 @@ const LeadManagement = () => {
     const formattedTime = getFormattedTimestamp();
     const target = leads.find(l => l.id === id);
     if (!target || target.manager === newManager) return;
+    // Record WHO changed it, the PREVIOUS assignee, the NEW assignee and WHEN.
+    const prevMgr = (target.manager && String(target.manager).trim() && String(target.manager).trim().toLowerCase() !== 'unassigned') ? String(target.manager).trim() : 'Unassigned';
+    const actor = currentUserName();
     const newHistory = [...(target.history || []), {
       timestamp: formattedTime,
-      message: `Updated assignTo to: ${newManager}`
+      user: actor,
+      message: `Lead reassigned from ${prevMgr} to ${newManager} by ${actor}`
     }];
     const updatedLead = { ...target, manager: newManager, history: newHistory };
     setLeads(leads.map(l => (l.id === id ? updatedLead : l)));
