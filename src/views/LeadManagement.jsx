@@ -146,7 +146,12 @@ const LeadManagement = () => {
   //                    only replaced by the server copy when the local copy still
   //                    matches what we last saw on the server (i.e. no pending edit).
   const serverSigRef = useRef(new Map()); // id -> signature of the lead as last seen on the server
-  const sigOf = (l) => { try { return JSON.stringify(l); } catch { return String(l && l.id); } };
+  // Content signature of a lead — EXCLUDING server-managed fields (_id, createdAt,
+  // updatedAt, __v) that change on every write. Comparing content (not timestamps) lets a
+  // locally-edited lead re-match the server once its edit has round-tripped, so (a) the poll
+  // adopts later cross-portal changes to it, and (b) the sync stops re-sending it (which
+  // otherwise re-broadcast a now-stale copy every poll and could revert another portal).
+  const sigOf = (l) => { try { const { _id, createdAt, updatedAt, __v, ...rest } = l || {}; return JSON.stringify(rest); } catch { return String(l && l.id); } };
   useEffect(() => {
     let cancelled = false;
     let firstLoad = true;
@@ -217,11 +222,24 @@ const LeadManagement = () => {
     if (!leadsLoaded) return;
     if (bulkTimerRef.current) clearTimeout(bulkTimerRef.current);
     bulkTimerRef.current = setTimeout(() => {
+      // Sync ONLY the leads this portal actually changed (new, or edited since the last
+      // server snapshot). Broadcasting the WHOLE array let a stale copy of a lead this
+      // portal never touched overwrite an edit just made in another portal — the cause of
+      // cross-portal changes "reverting" and details "disappearing". Untouched leads are
+      // left to whatever the backend (the single source of truth) already holds.
+      const changed = leads.filter((l) => l && l.id && serverSigRef.current.get(l.id) !== sigOf(l));
+      if (changed.length === 0) return;
       fetch(`${API_URL}/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(leads)
-      }).catch(err => console.error('Failed to sync leads to API:', err));
+        body: JSON.stringify(changed)
+      })
+        .then(() => {
+          // Record what we just wrote so an unchanged lead is not re-sent next time
+          // (the next poll replaces this with the authoritative server snapshot anyway).
+          changed.forEach((l) => { try { serverSigRef.current.set(l.id, sigOf(l)); } catch (_) {} });
+        })
+        .catch(err => console.error('Failed to sync leads to API:', err));
     }, 800);
     return () => { if (bulkTimerRef.current) clearTimeout(bulkTimerRef.current); };
   }, [leads, leadsLoaded]);
