@@ -229,17 +229,23 @@ const LeadManagement = () => {
       // left to whatever the backend (the single source of truth) already holds.
       const changed = leads.filter((l) => l && l.id && serverSigRef.current.get(l.id) !== sigOf(l));
       if (changed.length === 0) return;
-      fetch(`${API_URL}/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(changed)
-      })
-        .then(() => {
-          // Record what we just wrote so an unchanged lead is not re-sent next time
-          // (the next poll replaces this with the authoritative server snapshot anyway).
-          changed.forEach((l) => { try { serverSigRef.current.set(l.id, sigOf(l)); } catch (_) {} });
-        })
-        .catch(err => console.error('Failed to sync leads to API:', err));
+      // Remember what we wrote so an unchanged lead is not re-sent next time.
+      const done = (l) => { try { serverSigRef.current.set(l.id, sigOf(l)); } catch (_) {} };
+      // EXISTING leads -> authoritative per-lead PUT: the backend \$set-merges just this one
+      // lead, so an edit can never touch another lead or blank a field, and can never be
+      // reverted by a stale whole-array write. NEW leads -> bulk upsert (creates them by id).
+      const fresh = changed.filter((l) => !serverSigRef.current.has(l.id));
+      const edited = changed.filter((l) => serverSigRef.current.has(l.id));
+      if (fresh.length) {
+        fetch(`${API_URL}/bulk`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fresh) })
+          .then(() => fresh.forEach(done))
+          .catch(err => console.error('Failed to create leads:', err));
+      }
+      edited.forEach((l) => {
+        fetch(`${API_URL}/${l.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(l) })
+          .then(() => done(l))
+          .catch(err => console.error('Failed to sync lead', l.id, err));
+      });
     }, 800);
     return () => { if (bulkTimerRef.current) clearTimeout(bulkTimerRef.current); };
   }, [leads, leadsLoaded]);
