@@ -1465,6 +1465,8 @@ const LeadManagement = () => {
           notes: data.notes,
           manager: data.manager || l.manager || 'Unassigned',
           followUp: data.followUp || l.followUp || 'Pending',
+          timeline: data.timeline || l.timeline || '',
+          area: data.area || l.area || '',
           attachments: Array.isArray(data.attachments) ? data.attachments : (l.attachments || []),
           _wizard: data._wizard,
           history: [...(l.history || []), { timestamp: formattedTime, message: 'Lead details updated via edit form' }]
@@ -1503,6 +1505,8 @@ const LeadManagement = () => {
       type: 'new leads',
       manager: data.manager || 'Unassigned',
       followUp: data.followUp || 'Pending',
+      timeline: data.timeline || '',
+      area: data.area || '',
       priority: 'Medium',
       attachments: Array.isArray(data.attachments) ? data.attachments : [],
       history: [
